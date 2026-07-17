@@ -5,6 +5,8 @@ A [GitHub CLI](https://cli.github.com) extension that exports the SBOM (software
 It uses GitHub's native dependency-graph SBOM endpoint ([`GET /repos/{owner}/{repo}/dependency-graph/sbom`](https://docs.github.com/en/rest/dependency-graph/sboms)), which returns the same server-side-computed data shown in a repo's
 **Insights → Dependency graph** tab — so there's no cloning and no local scanning. One flat REST call per repo.
 
+It's a precompiled Go extension built on [go-gh](https://github.com/cli/go-gh), so it reuses your existing `gh` auth and has no runtime dependencies.
+
 ## Install
 
 ```sh
@@ -14,10 +16,8 @@ gh extension install conbrad/gh-sbom
 Or from a local checkout:
 
 ```sh
-gh extension install .
+go build && gh extension install .
 ```
-
-Requires [`jq`](https://jqlang.org).
 
 ## Usage
 
@@ -83,3 +83,10 @@ gh api rate_limit --jq '.resources.core'
 
 - **Dependency graph must be enabled** for a repo. It's on by default for public repos; for private repos an org admin may need to enable it under **Settings → Advanced Security → Dependency graph**. Disabled repos are reported and skipped.
 - Results reflect **declared dependencies** that GitHub's parsers understand (npm, pip, Maven, Cargo, Go modules, RubyGems, NuGet, Composer, GitHub Actions, etc.) — including transitive dependencies from lockfiles. It is not a from-scratch scan like syft, so it won't catch OS-level packages baked into a Dockerfile.
+
+## Releasing
+
+Push a tag like `v0.1.0` and the `release` workflow
+([`cli/gh-extension-precompile`](https://github.com/cli/gh-extension-precompile))
+cross-compiles binaries for every platform and attaches them to a GitHub
+release, which is what `gh extension install` downloads.
