@@ -1,8 +1,6 @@
 package main
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"os"
 
@@ -23,34 +21,12 @@ func defaultClient() (*api.RESTClient, error) {
 }
 
 func run(args []string, stdout, stderr io.Writer, newClient clientFactory) int {
-	opts, err := parseArgs(args, stdout, stderr)
-	switch {
-	case errors.Is(err, errHelp):
-		return 0
-	case errors.Is(err, errUsage):
-		return 1
-	case err != nil:
-		fmt.Fprintf(stderr, "error: %v\n", err)
+	cmd := newRootCmd(newClient)
+	cmd.SetArgs(args)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	if err := cmd.Execute(); err != nil {
 		return 1
 	}
-
-	if !opts.skipFetch {
-		client, err := newClient()
-		if err != nil {
-			fmt.Fprintf(stderr, "error: %v (try `gh auth login`)\n", err)
-			return 1
-		}
-		if err := fetchSBOMs(client, opts, stderr); err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", err)
-			return 1
-		}
-	}
-
-	rows, err := aggregate(opts)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: %v\n", err)
-		return 1
-	}
-	summarize(rows, opts, stdout)
 	return 0
 }
