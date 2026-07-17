@@ -1,2 +1,7 @@
 /gh-sbom
 /gh-sbom.exe
+
+# tool output
+/sboms/
+/combined.tsv
+/coverage.out
