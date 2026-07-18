@@ -50,6 +50,7 @@ func TestCmdArgValidation(t *testing.T) {
 		{"negative limit", []string{"acme", "--limit=-1"}, "--limit must be non-negative, got -1"},
 		{"negative top", []string{"acme", "--top=-2"}, "--top must be non-negative, got -2"},
 		{"invalid format", []string{"acme", "--format", "yaml"}, `invalid format "yaml" (valid: tsv, csv, json)`},
+		{"empty out", []string{"acme", "--out", ""}, "--out requires a non-empty path"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -91,6 +92,37 @@ func TestCmdFormatDefaults(t *testing.T) {
 	}
 	if _, err := os.Stat("combined.json"); err != nil {
 		t.Fatalf("combined.json not written: %v", err)
+	}
+}
+
+func TestCmdFormatCaseInsensitive(t *testing.T) {
+	t.Chdir(t.TempDir())
+	code, stdout, _ := execRun(t, "acme", "--format", "JSON")
+	if code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	if !strings.Contains(stdout, "Wrote combined.json:") {
+		t.Fatalf("uppercase format not normalized:\n%s", stdout)
+	}
+}
+
+func TestCmdReaggregateIgnoresOwnOutput(t *testing.T) {
+	t.Chdir(t.TempDir())
+	out := filepath.Join("sboms", "combined.json")
+	// First run writes its JSON table inside the SBOM output dir...
+	if code, _, stderr := execRun(t, "acme", "-o", "sboms", "-f", "json", "--out", out); code != 0 {
+		t.Fatalf("first run code = %d, stderr:\n%s", code, stderr)
+	}
+	// ...and re-aggregation must skip that file rather than abort.
+	code, stdout, stderr := execRun(t, "--skip-fetch", "-o", "sboms", "-f", "json", "--out", out)
+	if code != 0 {
+		t.Fatalf("second run code = %d, stderr:\n%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "warning: skipping") {
+		t.Fatalf("expected skip warning:\n%s", stderr)
+	}
+	if !strings.Contains(stdout, "Wrote "+out+":") {
+		t.Fatalf("stdout = %s", stdout)
 	}
 }
 

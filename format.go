@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -46,15 +47,19 @@ func writeRows(path, format string, rows []row) error {
 		for _, r := range rows {
 			records = append(records, []string{r.repo, r.ecosystem, r.pkg, r.version})
 		}
-		_ = w.WriteAll(records) // writing to a bytes.Buffer cannot fail
-		return os.WriteFile(path, buf.Bytes(), 0o644)
+		// Argument order matters: WriteAll fills buf before WriteFile reads it.
+		return errors.Join(w.WriteAll(records), os.WriteFile(path, buf.Bytes(), 0o644))
 	case "json":
 		out := make([]jsonRow, 0, len(rows))
 		for _, r := range rows {
 			out = append(out, jsonRow{r.repo, r.ecosystem, r.pkg, r.version})
 		}
-		data, _ := json.MarshalIndent(out, "", "  ") // marshaling plain strings cannot fail
-		return os.WriteFile(path, append(data, '\n'), 0o644)
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false) // keep <, >, & as literal bytes, matching tsv/csv
+		enc.SetIndent("", "  ")
+		// Argument order matters: Encode fills buf before WriteFile reads it.
+		return errors.Join(enc.Encode(out), os.WriteFile(path, buf.Bytes(), 0o644))
 	default:
 		return invalidFormatErr(format)
 	}

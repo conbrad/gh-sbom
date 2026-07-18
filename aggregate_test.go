@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +29,7 @@ func TestEcosystemOf(t *testing.T) {
 func TestAggregate(t *testing.T) {
 	dir := writeSBOMDir(t, map[string]string{"app.json": goodSBOM, "empty.json": emptySBOM})
 
-	rows, err := aggregate(&options{outDir: dir})
+	rows, err := aggregate(&options{outDir: dir}, io.Discard)
 	if err != nil {
 		t.Fatalf("aggregate: %v", err)
 	}
@@ -44,11 +46,11 @@ func TestAggregate(t *testing.T) {
 
 func TestAggregateErrors(t *testing.T) {
 	// Malformed glob pattern.
-	if _, err := aggregate(&options{outDir: "["}); !errors.Is(err, filepath.ErrBadPattern) {
+	if _, err := aggregate(&options{outDir: "["}, io.Discard); !errors.Is(err, filepath.ErrBadPattern) {
 		t.Fatalf("err = %v, want ErrBadPattern", err)
 	}
 	// No JSON files.
-	if _, err := aggregate(&options{outDir: t.TempDir()}); err == nil ||
+	if _, err := aggregate(&options{outDir: t.TempDir()}, io.Discard); err == nil ||
 		!strings.Contains(err.Error(), "no SBOM JSON files") {
 		t.Fatalf("err = %v", err)
 	}
@@ -57,13 +59,28 @@ func TestAggregateErrors(t *testing.T) {
 	if err := os.Chmod(filepath.Join(dir, "app.json"), 0o000); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := aggregate(&options{outDir: dir}); err == nil {
+	if _, err := aggregate(&options{outDir: dir}, io.Discard); err == nil {
 		t.Fatal("expected read error")
 	}
-	// Invalid JSON.
-	dir = writeSBOMDir(t, map[string]string{"app.json": "{"})
-	if _, err := aggregate(&options{outDir: dir}); err == nil ||
-		!strings.Contains(err.Error(), "app.json") {
-		t.Fatalf("err = %v", err)
+}
+
+func TestAggregateSkipsNonSBOM(t *testing.T) {
+	// The tool's own --format json output (a JSON array) living in the
+	// output dir must be skipped with a warning, not abort the run.
+	dir := writeSBOMDir(t, map[string]string{
+		"app.json":      goodSBOM,
+		"combined.json": `[{"repo":"app","package":"lodash"}]`,
+	})
+	var stderr bytes.Buffer
+	rows, err := aggregate(&options{outDir: dir}, &stderr)
+	if err != nil {
+		t.Fatalf("aggregate: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows = %v, want the 2 goodSBOM dependencies only", rows)
+	}
+	warn := stderr.String()
+	if !strings.Contains(warn, "warning: skipping") || !strings.Contains(warn, "combined.json") {
+		t.Fatalf("missing skip warning:\n%s", warn)
 	}
 }

@@ -86,6 +86,8 @@ gh api rate_limit --jq '.resources.core'
 
 - **Dependency graph must be enabled** for a repo. It's on by default for public repos; for private repos an org admin may need to enable it under **Settings → Advanced Security → Dependency graph**. Disabled repos are reported and skipped.
 - Results reflect **declared dependencies** that GitHub's parsers understand (npm, pip, Maven, Cargo, Go modules, RubyGems, NuGet, Composer, GitHub Actions, etc.) — including transitive dependencies from lockfiles. It is not a from-scratch scan like syft, so it won't catch OS-level packages baked into a Dockerfile.
+- TSV/CSV output is RFC 4180: a field containing the delimiter, a double quote, a newline, or leading whitespace is quoted. Real package names are virtually never like that, but the naive `cut`/`grep` recipes above would mis-read such a row — use `--format json` + `jq` when you need bulletproof parsing.
+- During aggregation, `*.json` files in the output directory that aren't SBOMs (for example the tool's own `--format json` table, if you pointed `--out` there) are skipped with a warning.
 
 ## Releasing
 

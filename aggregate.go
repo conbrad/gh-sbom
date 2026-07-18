@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -28,7 +29,10 @@ func ecosystemOf(purl string) string {
 // aggregate extracts one row per dependency from every SBOM in the output
 // directory. The repo's own root package (the one the SPDX document
 // DESCRIBES) is excluded so rollups only count real dependencies.
-func aggregate(opts *options) ([]row, error) {
+// JSON files that don't parse as SBOMs — such as the tool's own
+// --format json output when --out points inside the output directory —
+// are skipped with a warning rather than aborting the run.
+func aggregate(opts *options, stderr io.Writer) ([]row, error) {
 	files, err := filepath.Glob(filepath.Join(opts.outDir, "*.json"))
 	if err != nil {
 		return nil, err
@@ -46,7 +50,8 @@ func aggregate(opts *options) ([]row, error) {
 		}
 		var doc sbomDoc
 		if err := json.Unmarshal(data, &doc); err != nil {
-			return nil, fmt.Errorf("%s: %w", f, err)
+			fmt.Fprintf(stderr, "warning: skipping %s: not a valid SBOM (%v)\n", f, err)
+			continue
 		}
 
 		repo := strings.TrimSuffix(filepath.Base(f), ".json")

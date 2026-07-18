@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -54,10 +55,14 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.format = strings.ToLower(opts.format)
 			if !isValidFormat(opts.format) {
 				return invalidFormatErr(opts.format)
 			}
 			if opts.outFile == "" {
+				if cmd.Flags().Changed("out") {
+					return errors.New("--out requires a non-empty path")
+				}
 				opts.outFile = "combined." + opts.format
 			}
 			if opts.limit < 0 {
@@ -80,7 +85,7 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 				}
 			}
 
-			rows, err := aggregate(opts)
+			rows, err := aggregate(opts, cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}

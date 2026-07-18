@@ -65,6 +65,40 @@ func TestWriteRowsJSON(t *testing.T) {
 	}
 }
 
+func TestWriteRowsQuoting(t *testing.T) {
+	rows := []row{
+		{"r", "npm", "has\ttab", "1.0"},
+		{"r", "npm", `has"quote`, "2.0"},
+		{"r", "npm", " leading-space", "3.0"},
+	}
+	// TSV: tab is the delimiter, so the tab-containing field is quoted;
+	// quotes are doubled; leading whitespace forces quoting.
+	wantTSV := "repo\tecosystem\tpackage\tversion\n" +
+		"r\tnpm\t\"has\ttab\"\t1.0\n" +
+		"r\tnpm\t\"has\"\"quote\"\t2.0\n" +
+		"r\tnpm\t\" leading-space\"\t3.0\n"
+	if got := writeAndRead(t, "tsv", rows); got != wantTSV {
+		t.Fatalf("tsv = %q, want %q", got, wantTSV)
+	}
+	// CSV: an embedded tab is not special, but quotes and leading
+	// whitespace still trigger quoting.
+	wantCSV := "repo,ecosystem,package,version\n" +
+		"r,npm,has\ttab,1.0\n" +
+		"r,npm,\"has\"\"quote\",2.0\n" +
+		"r,npm,\" leading-space\",3.0\n"
+	if got := writeAndRead(t, "csv", rows); got != wantCSV {
+		t.Fatalf("csv = %q, want %q", got, wantCSV)
+	}
+}
+
+func TestWriteRowsJSONNoHTMLEscape(t *testing.T) {
+	// <, >, and & must stay literal so JSON output matches tsv/csv bytes.
+	got := writeAndRead(t, "json", []row{{"r", "npm", "a&b<c>d", "1.0"}})
+	if !strings.Contains(got, `"a&b<c>d"`) {
+		t.Fatalf("HTML-escaped JSON output: %q", got)
+	}
+}
+
 func TestWriteRowsJSONEmpty(t *testing.T) {
 	// Zero rows must serialize as [], never null.
 	if got := writeAndRead(t, "json", nil); got != "[]\n" {
