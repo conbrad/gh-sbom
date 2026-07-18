@@ -27,7 +27,8 @@ const example = `  gh sbom my-org
 type options struct {
 	target          string
 	outDir          string
-	tsvFile         string
+	outFile         string
+	format          string
 	limit           int
 	top             int
 	includeArchived bool
@@ -53,6 +54,12 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !isValidFormat(opts.format) {
+				return invalidFormatErr(opts.format)
+			}
+			if opts.outFile == "" {
+				opts.outFile = "combined." + opts.format
+			}
 			if opts.limit < 0 {
 				return fmt.Errorf("--limit must be non-negative, got %d", opts.limit)
 			}
@@ -77,6 +84,9 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := writeRows(opts.outFile, opts.format, rows); err != nil {
+				return err
+			}
 			summarize(rows, opts, cmd.OutOrStdout())
 			return nil
 		},
@@ -85,7 +95,8 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 
 	f := cmd.Flags()
 	f.StringVarP(&opts.outDir, "output", "o", "sboms", "directory for raw SBOM JSON files")
-	f.StringVarP(&opts.tsvFile, "tsv", "t", "combined.tsv", "combined TSV output path")
+	f.StringVarP(&opts.format, "format", "f", "tsv", "output format for the combined table: tsv, csv, or json")
+	f.StringVar(&opts.outFile, "out", "", `combined table output path (default "combined.<format>")`)
 	f.IntVarP(&opts.limit, "limit", "l", 1000, "max repos to list from the org")
 	f.IntVarP(&opts.top, "top", "n", 20, `rows in the "most common packages" rollup`)
 	f.BoolVar(&opts.includeArchived, "include-archived", false, "include archived repos (skipped by default)")

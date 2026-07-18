@@ -26,9 +26,8 @@ func TestEcosystemOf(t *testing.T) {
 
 func TestAggregate(t *testing.T) {
 	dir := writeSBOMDir(t, map[string]string{"app.json": goodSBOM, "empty.json": emptySBOM})
-	tsv := filepath.Join(dir, "combined.tsv")
 
-	rows, err := aggregate(&options{outDir: dir, tsvFile: tsv})
+	rows, err := aggregate(&options{outDir: dir})
 	if err != nil {
 		t.Fatalf("aggregate: %v", err)
 	}
@@ -40,17 +39,6 @@ func TestAggregate(t *testing.T) {
 	}
 	if fmt.Sprint(rows) != fmt.Sprint(want) {
 		t.Fatalf("rows = %v, want %v", rows, want)
-	}
-
-	data, err := os.ReadFile(tsv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantTSV := "repo\tecosystem\tpackage\tversion\n" +
-		"app\tnpm\tlodash\t4.17.21\n" +
-		"app\tunknown\tleft-pad\tunknown\n"
-	if string(data) != wantTSV {
-		t.Fatalf("tsv = %q, want %q", data, wantTSV)
 	}
 }
 
@@ -77,10 +65,5 @@ func TestAggregateErrors(t *testing.T) {
 	if _, err := aggregate(&options{outDir: dir}); err == nil ||
 		!strings.Contains(err.Error(), "app.json") {
 		t.Fatalf("err = %v", err)
-	}
-	// TSV destination not writable.
-	dir = writeSBOMDir(t, map[string]string{"app.json": goodSBOM})
-	if _, err := aggregate(&options{outDir: dir, tsvFile: filepath.Join(dir, "no", "such", "x.tsv")}); err == nil {
-		t.Fatal("expected tsv write error")
 	}
 }

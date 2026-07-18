@@ -18,7 +18,7 @@ func TestRunEndToEnd(t *testing.T) {
 	factory := func() (*api.RESTClient, error) { return handlerClient(t, orgMux(t)), nil }
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"acme", "-o", outDir, "-t", tsv, "--top", "2"}, &stdout, &stderr, factory)
+	code := run([]string{"acme", "-o", outDir, "--out", tsv, "--top", "2"}, &stdout, &stderr, factory)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr:\n%s", code, stderr.String())
 	}
@@ -31,7 +31,7 @@ func TestRunEndToEnd(t *testing.T) {
 
 	// Re-aggregate offline from the files the first run produced.
 	stdout.Reset()
-	code = run([]string{"--skip-fetch", "-o", outDir, "-t", tsv}, &stdout, &stderr, nil)
+	code = run([]string{"--skip-fetch", "-o", outDir, "--out", tsv}, &stdout, &stderr, nil)
 	if code != 0 || !strings.Contains(stdout.String(), "unique packages") {
 		t.Fatalf("skip-fetch: code = %d, stdout = %s", code, stdout.String())
 	}
@@ -62,6 +62,11 @@ func TestRunFailures(t *testing.T) {
 	}
 	if code := run([]string{"--skip-fetch", "-o", t.TempDir()}, &stdout, &stderr, okFactory); code != 1 {
 		t.Fatal("aggregate failure should exit 1")
+	}
+	sbomDir := writeSBOMDir(t, map[string]string{"app.json": goodSBOM})
+	badOut := filepath.Join(t.TempDir(), "no", "such", "x.tsv")
+	if code := run([]string{"--skip-fetch", "-o", sbomDir, "--out", badOut}, &stdout, &stderr, okFactory); code != 1 {
+		t.Fatal("write failure should exit 1")
 	}
 }
 

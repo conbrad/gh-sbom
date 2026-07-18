@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -47,6 +49,7 @@ func TestCmdArgValidation(t *testing.T) {
 		{"non-numeric limit", []string{"acme", "--limit", "abc"}, "invalid argument"},
 		{"negative limit", []string{"acme", "--limit=-1"}, "--limit must be non-negative, got -1"},
 		{"negative top", []string{"acme", "--top=-2"}, "--top must be non-negative, got -2"},
+		{"invalid format", []string{"acme", "--format", "yaml"}, `invalid format "yaml" (valid: tsv, csv, json)`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -73,5 +76,39 @@ func TestCmdDefaults(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "Top 20 packages") {
 		t.Fatalf("default top not used:\n%s", stdout)
+	}
+}
+
+func TestCmdFormatDefaults(t *testing.T) {
+	t.Chdir(t.TempDir())
+	code, stdout, _ := execRun(t, "acme", "-f", "json")
+	if code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	// Default out path follows the format.
+	if !strings.Contains(stdout, "Wrote combined.json:") {
+		t.Fatalf("default out path wrong:\n%s", stdout)
+	}
+	if _, err := os.Stat("combined.json"); err != nil {
+		t.Fatalf("combined.json not written: %v", err)
+	}
+}
+
+func TestCmdExplicitOut(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "deps.csv")
+	code, stdout, _ := execRun(t, "acme", "-o", filepath.Join(dir, "sboms"), "--format", "csv", "--out", out)
+	if code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	if !strings.Contains(stdout, "Wrote "+out+":") {
+		t.Fatalf("explicit out path not reported:\n%s", stdout)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(data), "repo,ecosystem,package,version\n") {
+		t.Fatalf("csv header missing: %q", data)
 	}
 }

@@ -15,7 +15,7 @@ func TestSummarize(t *testing.T) {
 		{"r2", "npm", "chalk", "5.0.0"},
 	}
 	var stdout bytes.Buffer
-	summarize(rows, &options{tsvFile: "combined.tsv", top: 2}, &stdout)
+	summarize(rows, &options{outFile: "combined.tsv", top: 2}, &stdout)
 
 	out := stdout.String()
 	if !strings.Contains(out, "5 dependency entries, 3 unique packages across 2 repos") {
@@ -31,7 +31,7 @@ func TestSummarize(t *testing.T) {
 
 func TestSummarizeEmpty(t *testing.T) {
 	var stdout bytes.Buffer
-	summarize(nil, &options{tsvFile: "x.tsv", top: 20}, &stdout)
+	summarize(nil, &options{outFile: "x.tsv", top: 20}, &stdout)
 	if !strings.Contains(stdout.String(), "0 dependency entries") {
 		t.Fatalf("out = %q", stdout.String())
 	}

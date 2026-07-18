@@ -26,9 +26,8 @@ func ecosystemOf(purl string) string {
 }
 
 // aggregate extracts one row per dependency from every SBOM in the output
-// directory and writes the combined TSV. The repo's own root package (the one
-// the SPDX document DESCRIBES) is excluded so rollups only count real
-// dependencies.
+// directory. The repo's own root package (the one the SPDX document
+// DESCRIBES) is excluded so rollups only count real dependencies.
 func aggregate(opts *options) ([]row, error) {
 	files, err := filepath.Glob(filepath.Join(opts.outDir, "*.json"))
 	if err != nil {
@@ -76,13 +75,5 @@ func aggregate(opts *options) ([]row, error) {
 		}
 	}
 
-	var b strings.Builder
-	b.WriteString("repo\tecosystem\tpackage\tversion\n")
-	for _, r := range rows {
-		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\n", r.repo, r.ecosystem, r.pkg, r.version)
-	}
-	if err := os.WriteFile(opts.tsvFile, []byte(b.String()), 0o644); err != nil {
-		return nil, err
-	}
 	return rows, nil
 }
