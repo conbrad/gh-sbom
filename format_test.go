@@ -80,7 +80,7 @@ func TestWriteRowsInvalidFormat(t *testing.T) {
 }
 
 func TestWriteRowsCreateError(t *testing.T) {
-	for _, format := range []string{"tsv", "json"} {
+	for _, format := range []string{"tsv", "csv", "json"} {
 		path := filepath.Join(t.TempDir(), "no", "such", "dir", "out")
 		if err := writeRows(path, format, formatRows); err == nil {
 			t.Fatalf("%s: expected error for unwritable path", format)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -35,12 +36,8 @@ type jsonRow struct {
 func writeRows(path, format string, rows []row) error {
 	switch format {
 	case "tsv", "csv":
-		f, err := os.Create(path)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		w := csv.NewWriter(f)
+		var buf bytes.Buffer
+		w := csv.NewWriter(&buf)
 		if format == "tsv" {
 			w.Comma = '\t'
 		}
@@ -49,7 +46,8 @@ func writeRows(path, format string, rows []row) error {
 		for _, r := range rows {
 			records = append(records, []string{r.repo, r.ecosystem, r.pkg, r.version})
 		}
-		return w.WriteAll(records)
+		_ = w.WriteAll(records) // writing to a bytes.Buffer cannot fail
+		return os.WriteFile(path, buf.Bytes(), 0o644)
 	case "json":
 		out := make([]jsonRow, 0, len(rows))
 		for _, r := range rows {

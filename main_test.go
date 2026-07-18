@@ -14,24 +14,24 @@ import (
 func TestRunEndToEnd(t *testing.T) {
 	dir := t.TempDir()
 	outDir := filepath.Join(dir, "sboms")
-	tsv := filepath.Join(dir, "combined.tsv")
+	out := filepath.Join(dir, "combined.tsv")
 	factory := func() (*api.RESTClient, error) { return handlerClient(t, orgMux(t)), nil }
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"acme", "-o", outDir, "--out", tsv, "--top", "2"}, &stdout, &stderr, factory)
+	code := run([]string{"acme", "-o", outDir, "--out", out, "--top", "2"}, &stdout, &stderr, factory)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr:\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "Top 2 packages by repo count:") {
 		t.Fatalf("stdout = %s", stdout.String())
 	}
-	if _, err := os.Stat(tsv); err != nil {
-		t.Fatalf("tsv not written: %v", err)
+	if _, err := os.Stat(out); err != nil {
+		t.Fatalf("out not written: %v", err)
 	}
 
 	// Re-aggregate offline from the files the first run produced.
 	stdout.Reset()
-	code = run([]string{"--skip-fetch", "-o", outDir, "--out", tsv}, &stdout, &stderr, nil)
+	code = run([]string{"--skip-fetch", "-o", outDir, "--out", out}, &stdout, &stderr, nil)
 	if code != 0 || !strings.Contains(stdout.String(), "unique packages") {
 		t.Fatalf("skip-fetch: code = %d, stdout = %s", code, stdout.String())
 	}
