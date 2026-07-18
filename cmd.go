@@ -16,7 +16,7 @@ so there is no cloning and no local scanning -- one REST call per repo.
 
 Pass an org (or user) to fetch SBOMs for every repo, or <owner>/<repo> for a
 single repo. Raw SPDX JSON is saved per repo in the output directory, and a
-combined TSV (columns: repo, ecosystem, package, version) is written alongside
+combined table (columns: repo, ecosystem, package, version; --format tsv|csv|json) is written alongside
 a "most common packages" rollup.`
 
 const example = `  gh sbom my-org
