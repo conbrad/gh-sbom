@@ -108,13 +108,13 @@ func TestWriteRowsJSONEmpty(t *testing.T) {
 
 func TestWriteRowsInvalidFormat(t *testing.T) {
 	err := writeRows(filepath.Join(t.TempDir(), "x"), "yaml", formatRows)
-	if err == nil || !strings.Contains(err.Error(), `invalid format "yaml" (valid: tsv, csv, json)`) {
+	if err == nil || !strings.Contains(err.Error(), `invalid format "yaml" (valid: tsv, csv, json, html)`) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestWriteRowsCreateError(t *testing.T) {
-	for _, format := range []string{"tsv", "csv", "json"} {
+	for _, format := range []string{"tsv", "csv", "json", "html"} {
 		path := filepath.Join(t.TempDir(), "no", "such", "dir", "out")
 		if err := writeRows(path, format, formatRows); err == nil {
 			t.Fatalf("%s: expected error for unwritable path", format)
@@ -130,5 +130,70 @@ func TestIsValidFormat(t *testing.T) {
 	}
 	if isValidFormat("yaml") {
 		t.Error(`isValidFormat("yaml") = true`)
+	}
+}
+
+func TestWriteRowsHTML(t *testing.T) {
+	want := `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gh-sbom dependency table</title>
+<style>
+table{border-collapse:collapse;font-family:system-ui,sans-serif}
+th,td{border:1px solid #ccc;padding:4px 8px;text-align:left}
+th{background:#eee}
+</style>
+</head>
+<body>
+<table>
+<thead><tr><th>repo</th><th>ecosystem</th><th>package</th><th>version</th></tr></thead>
+<tbody>
+<tr><td>cli</td><td>golang</td><td>github.com/x/y</td><td>v1.0.0</td></tr>
+<tr><td>web</td><td>npm</td><td>left,pad</td><td>1.0</td></tr>
+</tbody>
+</table>
+</body>
+</html>
+`
+	if got := writeAndRead(t, "html", formatRows); got != want {
+		t.Fatalf("html = %q, want %q", got, want)
+	}
+}
+
+func TestWriteRowsHTMLEmpty(t *testing.T) {
+	want := `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gh-sbom dependency table</title>
+<style>
+table{border-collapse:collapse;font-family:system-ui,sans-serif}
+th,td{border:1px solid #ccc;padding:4px 8px;text-align:left}
+th{background:#eee}
+</style>
+</head>
+<body>
+<table>
+<thead><tr><th>repo</th><th>ecosystem</th><th>package</th><th>version</th></tr></thead>
+<tbody>
+</tbody>
+</table>
+</body>
+</html>
+`
+	if got := writeAndRead(t, "html", nil); got != want {
+		t.Fatalf("empty html = %q, want %q", got, want)
+	}
+}
+
+func TestWriteRowsHTMLEscaping(t *testing.T) {
+	rows := []row{{"r", "npm", `<script>alert("xss")</script>`, "1.0"}}
+	got := writeAndRead(t, "html", rows)
+	if !strings.Contains(got, "&lt;script&gt;") {
+		t.Fatalf("package name not escaped: %q", got)
+	}
+	if strings.Contains(got, "<script>alert") {
+		t.Fatalf("raw unescaped markup leaked into output: %q", got)
 	}
 }
