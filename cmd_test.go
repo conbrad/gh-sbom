@@ -23,7 +23,7 @@ func TestCmdHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("help code = %d", code)
 	}
-	for _, want := range []string{"Usage:", "sbom <org> | <owner>/<repo>", "--skip-fetch", "--include-archived", "Examples:"} {
+	for _, want := range []string{"Usage:", "sbom <org> | <owner>/<repo>", "--skip-fetch", "--include-archived", "Examples:", "html"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("help missing %q:\n%s", want, stdout)
 		}
@@ -92,6 +92,24 @@ func TestCmdFormatDefaults(t *testing.T) {
 	}
 	if _, err := os.Stat("combined.json"); err != nil {
 		t.Fatalf("combined.json not written: %v", err)
+	}
+}
+
+func TestCmdHTMLFormat(t *testing.T) {
+	t.Chdir(t.TempDir())
+	code, stdout, _ := execRun(t, "acme", "-f", "html")
+	if code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	if !strings.Contains(stdout, "Wrote combined.html:") {
+		t.Fatalf("default html out path wrong:\n%s", stdout)
+	}
+	data, err := os.ReadFile("combined.html")
+	if err != nil {
+		t.Fatalf("combined.html not written: %v", err)
+	}
+	if !strings.Contains(string(data), "<!DOCTYPE html>") || !strings.Contains(string(data), "<table>") {
+		t.Fatalf("combined.html missing expected markup: %q", data)
 	}
 }
 

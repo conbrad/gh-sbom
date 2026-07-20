@@ -40,7 +40,7 @@ gh sbom --skip-fetch
 | Flag | Default | Description |
 | --- | --- | --- |
 | `-o, --output <dir>` | `sboms` | Directory for raw SPDX JSON, one file per repo |
-| `-f, --format <fmt>` | `tsv` | Combined table format: `tsv`, `csv`, or `json` |
+| `-f, --format <fmt>` | `tsv` | Combined table format: `tsv`, `csv`, `json`, or `html` |
 | `--out <file>` | `combined.<format>` | Combined table output path |
 | `-l, --limit <n>` | `1000` | Max repos to list from the org |
 | `-n, --top <n>` | `20` | Rows in the "most common packages" rollup |
@@ -50,11 +50,13 @@ gh sbom --skip-fetch
 ## Output
 
 - `sboms/<repo>.json`: the raw SPDX 2.3 SBOM for each repo
-- `combined.<format>`: the combined dependency table (`--format tsv|csv|json`), one entry per dependency. TSV/CSV columns and JSON object keys: `repo`, `ecosystem`, `package`, `version`:
+- `combined.<format>`: the combined dependency table (`--format tsv|csv|json|html`), one entry per dependency. TSV/CSV columns and JSON object keys: `repo`, `ecosystem`, `package`, `version`:
 
   ```json
   [{"repo": "cli", "ecosystem": "golang", "package": "github.com/microcosm-cc/bluemonday", "version": "v1.0.27"}]
   ```
+
+  `--format html` produces a single self-contained, styled document (no JS, no external assets) — open it in a browser or attach it to a PR/issue for a quick shareable view. It's for reading, not parsing; use tsv/csv/json for that.
 
 The ecosystem column is derived from each package's [purl](https://github.com/package-url/purl-spec) (`pkg:golang/...` →`golang`); the repo's own root package is excluded so rollups only count real dependencies.
 
