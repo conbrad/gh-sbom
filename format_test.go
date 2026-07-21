@@ -1,10 +1,14 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/parquet-go/parquet-go"
 )
 
 var formatRows = []row{
@@ -108,13 +112,13 @@ func TestWriteRowsJSONEmpty(t *testing.T) {
 
 func TestWriteRowsInvalidFormat(t *testing.T) {
 	err := writeRows(filepath.Join(t.TempDir(), "x"), "yaml", formatRows)
-	if err == nil || !strings.Contains(err.Error(), `invalid format "yaml" (valid: tsv, csv, json, html)`) {
+	if err == nil || !strings.Contains(err.Error(), `invalid format "yaml" (valid: tsv, csv, json, html, parquet)`) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestWriteRowsCreateError(t *testing.T) {
-	for _, format := range []string{"tsv", "csv", "json", "html"} {
+	for _, format := range []string{"tsv", "csv", "json", "html", "parquet"} {
 		path := filepath.Join(t.TempDir(), "no", "such", "dir", "out")
 		if err := writeRows(path, format, formatRows); err == nil {
 			t.Fatalf("%s: expected error for unwritable path", format)
@@ -195,5 +199,57 @@ func TestWriteRowsHTMLEscaping(t *testing.T) {
 	}
 	if strings.Contains(got, "<script>alert") {
 		t.Fatalf("raw unescaped markup leaked into output: %q", got)
+	}
+}
+
+// parquetTestRow decodes the format's public schema independently of
+// whatever struct writeRows uses internally to produce it.
+type parquetTestRow struct {
+	Repo      string `parquet:"repo"`
+	Ecosystem string `parquet:"ecosystem"`
+	Package   string `parquet:"package"`
+	Version   string `parquet:"version"`
+}
+
+func readParquet(t *testing.T, path string) []parquetTestRow {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	r := parquet.NewGenericReader[parquetTestRow](f)
+	defer r.Close()
+	got := make([]parquetTestRow, r.NumRows())
+	n, err := r.Read(got)
+	if err != nil && err != io.EOF {
+		t.Fatalf("read parquet: %v", err)
+	}
+	return got[:n]
+}
+
+func TestWriteRowsParquet(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.parquet")
+	if err := writeRows(path, "parquet", formatRows); err != nil {
+		t.Fatalf("writeRows(parquet): %v", err)
+	}
+
+	want := []parquetTestRow{
+		{"cli", "golang", "github.com/x/y", "v1.0.0"},
+		{"web", "npm", "left,pad", "1.0"},
+	}
+	if got := readParquet(t, path); !reflect.DeepEqual(got, want) {
+		t.Fatalf("parquet rows = %+v, want %+v", got, want)
+	}
+}
+
+func TestWriteRowsParquetEmpty(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.parquet")
+	if err := writeRows(path, "parquet", nil); err != nil {
+		t.Fatalf("writeRows(parquet empty): %v", err)
+	}
+	if got := readParquet(t, path); len(got) != 0 {
+		t.Fatalf("empty parquet rows = %+v, want none", got)
 	}
 }

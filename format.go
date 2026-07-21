@@ -9,9 +9,11 @@ import (
 	"html/template"
 	"os"
 	"strings"
+
+	"github.com/parquet-go/parquet-go"
 )
 
-var validFormats = []string{"tsv", "csv", "json", "html"}
+var validFormats = []string{"tsv", "csv", "json", "html", "parquet"}
 
 func isValidFormat(f string) bool {
 	for _, v := range validFormats {
@@ -27,10 +29,10 @@ func invalidFormatErr(f string) error {
 }
 
 type jsonRow struct {
-	Repo      string `json:"repo"`
-	Ecosystem string `json:"ecosystem"`
-	Package   string `json:"package"`
-	Version   string `json:"version"`
+	Repo      string `json:"repo" parquet:"repo"`
+	Ecosystem string `json:"ecosystem" parquet:"ecosystem"`
+	Package   string `json:"package" parquet:"package"`
+	Version   string `json:"version" parquet:"version"`
 }
 
 var tableTemplate = template.Must(template.New("table").Parse(`<!DOCTYPE html>
@@ -94,6 +96,12 @@ func writeRows(path, format string, rows []row) error {
 		var buf bytes.Buffer
 		// Argument order matters: Execute fills buf before WriteFile reads it.
 		return errors.Join(tableTemplate.Execute(&buf, exportRows(rows)), os.WriteFile(path, buf.Bytes(), 0o644))
+	case "parquet":
+		var buf bytes.Buffer
+		w := parquet.NewGenericWriter[jsonRow](&buf)
+		_, writeErr := w.Write(exportRows(rows))
+		// Argument order matters: Write/Close fill buf before WriteFile reads it.
+		return errors.Join(writeErr, w.Close(), os.WriteFile(path, buf.Bytes(), 0o644))
 	default:
 		return invalidFormatErr(format)
 	}
