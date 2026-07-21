@@ -14,24 +14,24 @@ import (
 func TestRunEndToEnd(t *testing.T) {
 	dir := t.TempDir()
 	outDir := filepath.Join(dir, "sboms")
-	tsv := filepath.Join(dir, "combined.tsv")
+	out := filepath.Join(dir, "combined.tsv")
 	factory := func() (*api.RESTClient, error) { return handlerClient(t, orgMux(t)), nil }
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"acme", "-o", outDir, "-t", tsv, "--top", "2"}, &stdout, &stderr, factory)
+	code := run([]string{"acme", "-o", outDir, "--out", out, "--top", "2"}, &stdout, &stderr, factory)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr:\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "Top 2 packages by repo count:") {
 		t.Fatalf("stdout = %s", stdout.String())
 	}
-	if _, err := os.Stat(tsv); err != nil {
-		t.Fatalf("tsv not written: %v", err)
+	if _, err := os.Stat(out); err != nil {
+		t.Fatalf("out not written: %v", err)
 	}
 
 	// Re-aggregate offline from the files the first run produced.
 	stdout.Reset()
-	code = run([]string{"--skip-fetch", "-o", outDir, "-t", tsv}, &stdout, &stderr, nil)
+	code = run([]string{"--skip-fetch", "-o", outDir, "--out", out}, &stdout, &stderr, nil)
 	if code != 0 || !strings.Contains(stdout.String(), "unique packages") {
 		t.Fatalf("skip-fetch: code = %d, stdout = %s", code, stdout.String())
 	}
@@ -62,6 +62,11 @@ func TestRunFailures(t *testing.T) {
 	}
 	if code := run([]string{"--skip-fetch", "-o", t.TempDir()}, &stdout, &stderr, okFactory); code != 1 {
 		t.Fatal("aggregate failure should exit 1")
+	}
+	sbomDir := writeSBOMDir(t, map[string]string{"app.json": goodSBOM})
+	badOut := filepath.Join(t.TempDir(), "no", "such", "x.tsv")
+	if code := run([]string{"--skip-fetch", "-o", sbomDir, "--out", badOut}, &stdout, &stderr, okFactory); code != 1 {
+		t.Fatal("write failure should exit 1")
 	}
 }
 

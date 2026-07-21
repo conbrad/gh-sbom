@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,9 +28,8 @@ func TestEcosystemOf(t *testing.T) {
 
 func TestAggregate(t *testing.T) {
 	dir := writeSBOMDir(t, map[string]string{"app.json": goodSBOM, "empty.json": emptySBOM})
-	tsv := filepath.Join(dir, "combined.tsv")
 
-	rows, err := aggregate(&options{outDir: dir, tsvFile: tsv})
+	rows, err := aggregate(&options{outDir: dir}, io.Discard)
 	if err != nil {
 		t.Fatalf("aggregate: %v", err)
 	}
@@ -41,26 +42,15 @@ func TestAggregate(t *testing.T) {
 	if fmt.Sprint(rows) != fmt.Sprint(want) {
 		t.Fatalf("rows = %v, want %v", rows, want)
 	}
-
-	data, err := os.ReadFile(tsv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantTSV := "repo\tecosystem\tpackage\tversion\n" +
-		"app\tnpm\tlodash\t4.17.21\n" +
-		"app\tunknown\tleft-pad\tunknown\n"
-	if string(data) != wantTSV {
-		t.Fatalf("tsv = %q, want %q", data, wantTSV)
-	}
 }
 
 func TestAggregateErrors(t *testing.T) {
 	// Malformed glob pattern.
-	if _, err := aggregate(&options{outDir: "["}); !errors.Is(err, filepath.ErrBadPattern) {
+	if _, err := aggregate(&options{outDir: "["}, io.Discard); !errors.Is(err, filepath.ErrBadPattern) {
 		t.Fatalf("err = %v, want ErrBadPattern", err)
 	}
 	// No JSON files.
-	if _, err := aggregate(&options{outDir: t.TempDir()}); err == nil ||
+	if _, err := aggregate(&options{outDir: t.TempDir()}, io.Discard); err == nil ||
 		!strings.Contains(err.Error(), "no SBOM JSON files") {
 		t.Fatalf("err = %v", err)
 	}
@@ -69,18 +59,28 @@ func TestAggregateErrors(t *testing.T) {
 	if err := os.Chmod(filepath.Join(dir, "app.json"), 0o000); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := aggregate(&options{outDir: dir}); err == nil {
+	if _, err := aggregate(&options{outDir: dir}, io.Discard); err == nil {
 		t.Fatal("expected read error")
 	}
-	// Invalid JSON.
-	dir = writeSBOMDir(t, map[string]string{"app.json": "{"})
-	if _, err := aggregate(&options{outDir: dir}); err == nil ||
-		!strings.Contains(err.Error(), "app.json") {
-		t.Fatalf("err = %v", err)
+}
+
+func TestAggregateSkipsNonSBOM(t *testing.T) {
+	// The tool's own --format json output (a JSON array) living in the
+	// output dir must be skipped with a warning, not abort the run.
+	dir := writeSBOMDir(t, map[string]string{
+		"app.json":      goodSBOM,
+		"combined.json": `[{"repo":"app","package":"lodash"}]`,
+	})
+	var stderr bytes.Buffer
+	rows, err := aggregate(&options{outDir: dir}, &stderr)
+	if err != nil {
+		t.Fatalf("aggregate: %v", err)
 	}
-	// TSV destination not writable.
-	dir = writeSBOMDir(t, map[string]string{"app.json": goodSBOM})
-	if _, err := aggregate(&options{outDir: dir, tsvFile: filepath.Join(dir, "no", "such", "x.tsv")}); err == nil {
-		t.Fatal("expected tsv write error")
+	if len(rows) != 2 {
+		t.Fatalf("rows = %v, want the 2 goodSBOM dependencies only", rows)
+	}
+	warn := stderr.String()
+	if !strings.Contains(warn, "warning: skipping") || !strings.Contains(warn, "combined.json") {
+		t.Fatalf("missing skip warning:\n%s", warn)
 	}
 }

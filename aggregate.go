@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,10 +27,12 @@ func ecosystemOf(purl string) string {
 }
 
 // aggregate extracts one row per dependency from every SBOM in the output
-// directory and writes the combined TSV. The repo's own root package (the one
-// the SPDX document DESCRIBES) is excluded so rollups only count real
-// dependencies.
-func aggregate(opts *options) ([]row, error) {
+// directory. The repo's own root package (the one the SPDX document
+// DESCRIBES) is excluded so rollups only count real dependencies.
+// JSON files that don't parse as SBOMs — such as the tool's own
+// --format json output when --out points inside the output directory —
+// are skipped with a warning rather than aborting the run.
+func aggregate(opts *options, stderr io.Writer) ([]row, error) {
 	files, err := filepath.Glob(filepath.Join(opts.outDir, "*.json"))
 	if err != nil {
 		return nil, err
@@ -47,7 +50,8 @@ func aggregate(opts *options) ([]row, error) {
 		}
 		var doc sbomDoc
 		if err := json.Unmarshal(data, &doc); err != nil {
-			return nil, fmt.Errorf("%s: %w", f, err)
+			fmt.Fprintf(stderr, "warning: skipping %s: not a valid SBOM (%v)\n", f, err)
+			continue
 		}
 
 		repo := strings.TrimSuffix(filepath.Base(f), ".json")
@@ -76,13 +80,5 @@ func aggregate(opts *options) ([]row, error) {
 		}
 	}
 
-	var b strings.Builder
-	b.WriteString("repo\tecosystem\tpackage\tversion\n")
-	for _, r := range rows {
-		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\n", r.repo, r.ecosystem, r.pkg, r.version)
-	}
-	if err := os.WriteFile(opts.tsvFile, []byte(b.String()), 0o644); err != nil {
-		return nil, err
-	}
 	return rows, nil
 }

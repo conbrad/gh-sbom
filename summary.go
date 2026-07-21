@@ -20,7 +20,7 @@ func summarize(rows []row, opts *options, stdout io.Writer) {
 	}
 
 	fmt.Fprintf(stdout, "\nWrote %s: %d dependency entries, %d unique packages across %d repos\n",
-		opts.tsvFile, len(rows), len(uniquePkgs), len(repos))
+		opts.outFile, len(rows), len(uniquePkgs), len(repos))
 
 	if len(rows) == 0 || opts.top <= 0 {
 		return

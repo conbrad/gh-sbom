@@ -3,5 +3,6 @@
 
 # tool output
 /sboms/
-/combined.tsv
+/combined.*
 /coverage.out
+/.superpowers/

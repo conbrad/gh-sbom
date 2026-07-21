@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -16,8 +17,8 @@ so there is no cloning and no local scanning -- one REST call per repo.
 
 Pass an org (or user) to fetch SBOMs for every repo, or <owner>/<repo> for a
 single repo. Raw SPDX JSON is saved per repo in the output directory, and a
-combined TSV (columns: repo, ecosystem, package, version) is written alongside
-a "most common packages" rollup.`
+combined table (columns: repo, ecosystem, package, version;
+--format tsv|csv|json|html) is written alongside a "most common packages" rollup.`
 
 const example = `  gh sbom my-org
   gh sbom cli/cli
@@ -27,7 +28,8 @@ const example = `  gh sbom my-org
 type options struct {
 	target          string
 	outDir          string
-	tsvFile         string
+	outFile         string
+	format          string
 	limit           int
 	top             int
 	includeArchived bool
@@ -53,6 +55,16 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.format = strings.ToLower(opts.format)
+			if !isValidFormat(opts.format) {
+				return invalidFormatErr(opts.format)
+			}
+			if opts.outFile == "" {
+				if cmd.Flags().Changed("out") {
+					return errors.New("--out requires a non-empty path")
+				}
+				opts.outFile = "combined." + opts.format
+			}
 			if opts.limit < 0 {
 				return fmt.Errorf("--limit must be non-negative, got %d", opts.limit)
 			}
@@ -73,8 +85,11 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 				}
 			}
 
-			rows, err := aggregate(opts)
+			rows, err := aggregate(opts, cmd.ErrOrStderr())
 			if err != nil {
+				return err
+			}
+			if err := writeRows(opts.outFile, opts.format, rows); err != nil {
 				return err
 			}
 			summarize(rows, opts, cmd.OutOrStdout())
@@ -85,7 +100,8 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 
 	f := cmd.Flags()
 	f.StringVarP(&opts.outDir, "output", "o", "sboms", "directory for raw SBOM JSON files")
-	f.StringVarP(&opts.tsvFile, "tsv", "t", "combined.tsv", "combined TSV output path")
+	f.StringVarP(&opts.format, "format", "f", "tsv", "output format for the combined table: tsv, csv, json, or html")
+	f.StringVar(&opts.outFile, "out", "", `combined table output path (default "combined.<format>")`)
 	f.IntVarP(&opts.limit, "limit", "l", 1000, "max repos to list from the org")
 	f.IntVarP(&opts.top, "top", "n", 20, `rows in the "most common packages" rollup`)
 	f.BoolVar(&opts.includeArchived, "include-archived", false, "include archived repos (skipped by default)")
