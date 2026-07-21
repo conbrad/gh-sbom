@@ -18,7 +18,7 @@ so there is no cloning and no local scanning -- one REST call per repo.
 Pass an org (or user) to fetch SBOMs for every repo, or <owner>/<repo> for a
 single repo. Raw SPDX JSON is saved per repo in the output directory, and a
 combined table (columns: repo, ecosystem, package, version;
---format tsv|csv|json|html) is written alongside a "most common packages" rollup.`
+--format tsv|csv|json|html|parquet) is written alongside a "most common packages" rollup.`
 
 const example = `  gh sbom my-org
   gh sbom cli/cli
@@ -100,7 +100,7 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 
 	f := cmd.Flags()
 	f.StringVarP(&opts.outDir, "output", "o", "sboms", "directory for raw SBOM JSON files")
-	f.StringVarP(&opts.format, "format", "f", "tsv", "output format for the combined table: tsv, csv, json, or html")
+	f.StringVarP(&opts.format, "format", "f", "tsv", "output format for the combined table: tsv, csv, json, html, or parquet")
 	f.StringVar(&opts.outFile, "out", "", `combined table output path (default "combined.<format>")`)
 	f.IntVarP(&opts.limit, "limit", "l", 1000, "max repos to list from the org")
 	f.IntVarP(&opts.top, "top", "n", 20, `rows in the "most common packages" rollup`)

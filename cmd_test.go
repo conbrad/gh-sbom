@@ -49,7 +49,7 @@ func TestCmdArgValidation(t *testing.T) {
 		{"non-numeric limit", []string{"acme", "--limit", "abc"}, "invalid argument"},
 		{"negative limit", []string{"acme", "--limit=-1"}, "--limit must be non-negative, got -1"},
 		{"negative top", []string{"acme", "--top=-2"}, "--top must be non-negative, got -2"},
-		{"invalid format", []string{"acme", "--format", "yaml"}, `invalid format "yaml" (valid: tsv, csv, json, html)`},
+		{"invalid format", []string{"acme", "--format", "yaml"}, `invalid format "yaml" (valid: tsv, csv, json, html, parquet)`},
 		{"empty out", []string{"acme", "--out", ""}, "--out requires a non-empty path"},
 	}
 	for _, tc := range cases {
