@@ -27,17 +27,15 @@ func TestEcosystemOf(t *testing.T) {
 }
 
 func TestAggregate(t *testing.T) {
-	dir := writeSBOMDir(t, map[string]string{"app.json": goodSBOM, "empty.json": emptySBOM})
+	dir := writeSBOMDir(t, map[string]string{"acme/app.json": goodSBOM, "acme/empty.json": emptySBOM})
 
 	rows, err := aggregate(&options{outDir: dir}, io.Discard)
 	if err != nil {
 		t.Fatalf("aggregate: %v", err)
 	}
-	// goodSBOM: root and nameless packages excluded, lodash + left-pad kept;
-	// emptySBOM contributes nothing.
 	want := []row{
-		{"app", "npm", "lodash", "4.17.21"},
-		{"app", "unknown", "left-pad", "unknown"},
+		{"acme/app", "npm", "lodash", "4.17.21"},
+		{"acme/app", "unknown", "left-pad", "unknown"},
 	}
 	if fmt.Sprint(rows) != fmt.Sprint(want) {
 		t.Fatalf("rows = %v, want %v", rows, want)
@@ -55,8 +53,8 @@ func TestAggregateErrors(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	// Unreadable file.
-	dir := writeSBOMDir(t, map[string]string{"app.json": goodSBOM})
-	if err := os.Chmod(filepath.Join(dir, "app.json"), 0o000); err != nil {
+	dir := writeSBOMDir(t, map[string]string{"acme/app.json": goodSBOM})
+	if err := os.Chmod(filepath.Join(dir, "acme", "app.json"), 0o000); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := aggregate(&options{outDir: dir}, io.Discard); err == nil {
@@ -65,11 +63,9 @@ func TestAggregateErrors(t *testing.T) {
 }
 
 func TestAggregateSkipsNonSBOM(t *testing.T) {
-	// The tool's own --format json output (a JSON array) living in the
-	// output dir must be skipped with a warning, not abort the run.
 	dir := writeSBOMDir(t, map[string]string{
-		"app.json":      goodSBOM,
-		"combined.json": `[{"repo":"app","package":"lodash"}]`,
+		"acme/app.json":      goodSBOM,
+		"acme/combined.json": `[{"repo":"acme/app","package":"lodash"}]`,
 	})
 	var stderr bytes.Buffer
 	rows, err := aggregate(&options{outDir: dir}, &stderr)
@@ -82,5 +78,23 @@ func TestAggregateSkipsNonSBOM(t *testing.T) {
 	warn := stderr.String()
 	if !strings.Contains(warn, "warning: skipping") || !strings.Contains(warn, "combined.json") {
 		t.Fatalf("missing skip warning:\n%s", warn)
+	}
+}
+
+func TestAggregateMultipleOwners(t *testing.T) {
+	dir := writeSBOMDir(t, map[string]string{
+		"acme/app.json":  goodSBOM,
+		"other/app.json": goodSBOM,
+	})
+	rows, err := aggregate(&options{outDir: dir}, io.Discard)
+	if err != nil {
+		t.Fatalf("aggregate: %v", err)
+	}
+	got := map[string]bool{}
+	for _, r := range rows {
+		got[r.repo] = true
+	}
+	if !got["acme/app"] || !got["other/app"] {
+		t.Fatalf("rows missing cross-owner entries: %v", rows)
 	}
 }

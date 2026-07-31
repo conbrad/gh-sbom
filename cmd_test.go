@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,13 +46,16 @@ func TestCmdArgValidation(t *testing.T) {
 		wantErr string
 	}{
 		{"no target", nil, "a target <org> or <owner>/<repo> is required"},
-		{"too many args", []string{"acme", "other"}, "unexpected argument: other"},
 		{"unknown flag", []string{"acme", "--bogus"}, "unknown flag: --bogus"},
 		{"non-numeric limit", []string{"acme", "--limit", "abc"}, "invalid argument"},
 		{"negative limit", []string{"acme", "--limit=-1"}, "--limit must be non-negative, got -1"},
 		{"negative top", []string{"acme", "--top=-2"}, "--top must be non-negative, got -2"},
 		{"invalid format", []string{"acme", "--format", "yaml"}, `invalid format "yaml" (valid: tsv, csv, json, html, parquet)`},
 		{"empty out", []string{"acme", "--out", ""}, "--out requires a non-empty path"},
+		{"bare name with multiple args", []string{"acme", "other"}, `invalid target "acme": expected <owner>/<repo>, or a single org/user name with no other arguments`},
+		{"mixed bare org and owner/repo", []string{"acme", "cli/cli"}, `invalid target "acme": expected <owner>/<repo>, or a single org/user name with no other arguments`},
+		{"malformed target missing repo", []string{"owner/"}, `invalid target "owner/": expected <owner>/<repo>, or a single org/user name with no other arguments`},
+		{"malformed target missing owner", []string{"/repo"}, `invalid target "/repo": expected <owner>/<repo>, or a single org/user name with no other arguments`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -126,7 +131,7 @@ func TestCmdFormatCaseInsensitive(t *testing.T) {
 
 func TestCmdReaggregateIgnoresOwnOutput(t *testing.T) {
 	t.Chdir(t.TempDir())
-	out := filepath.Join("sboms", "combined.json")
+	out := filepath.Join("sboms", "acme", "combined.json")
 	// First run writes its JSON table inside the SBOM output dir...
 	if code, _, stderr := execRun(t, "acme", "-o", "sboms", "-f", "json", "--out", out); code != 0 {
 		t.Fatalf("first run code = %d, stderr:\n%s", code, stderr)
@@ -160,5 +165,31 @@ func TestCmdExplicitOut(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(data), "repo,ecosystem,package,version\n") {
 		t.Fatalf("csv header missing: %q", data)
+	}
+}
+
+func TestCmdExplicitRepoList(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/acme/app/dependency-graph/sbom", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, goodSBOM)
+	})
+	mux.HandleFunc("/repos/other/thing/dependency-graph/sbom", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, emptySBOM)
+	})
+	factory := func() (*api.RESTClient, error) { return handlerClient(t, mux), nil }
+
+	t.Chdir(t.TempDir())
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"acme/app", "other/thing"}, &stdout, &stderr, factory)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr:\n%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Wrote combined.tsv: 2 dependency entries") {
+		t.Fatalf("stdout = %s", stdout.String())
+	}
+	for _, f := range []string{filepath.Join("sboms", "acme", "app.json"), filepath.Join("sboms", "other", "thing.json")} {
+		if _, err := os.Stat(f); err != nil {
+			t.Errorf("expected %s: %v", f, err)
+		}
 	}
 }

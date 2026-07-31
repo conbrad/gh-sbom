@@ -15,18 +15,20 @@ const longHelp = `Export and aggregate SBOMs from GitHub's dependency graph.
 Uses GitHub's native SBOM endpoint (GET /repos/{owner}/{repo}/dependency-graph/sbom),
 so there is no cloning and no local scanning -- one REST call per repo.
 
-Pass an org (or user) to fetch SBOMs for every repo, or <owner>/<repo> for a
-single repo. Raw SPDX JSON is saved per repo in the output directory, and a
+Pass an org (or user) to fetch SBOMs for every repo, or one or more
+<owner>/<repo> targets (possibly spanning multiple owners) to fetch just
+those. Raw SPDX JSON is saved per repo in the output directory, and a
 combined table (columns: repo, ecosystem, package, version;
 --format tsv|csv|json|html|parquet) is written alongside a "most common packages" rollup.`
 
 const example = `  gh sbom my-org
   gh sbom cli/cli
+  gh sbom cli/cli conbrad/gh-sbom octo/hello
   gh sbom my-org --top 50
   gh sbom --skip-fetch  # re-aggregate previously downloaded SBOMs`
 
 type options struct {
-	target          string
+	targets         []string
 	outDir          string
 	outFile         string
 	format          string
@@ -39,18 +41,27 @@ type options struct {
 func newRootCmd(newClient clientFactory) *cobra.Command {
 	opts := &options{}
 	cmd := &cobra.Command{
-		Use:          "sbom <org> | <owner>/<repo>",
+		Use:          "sbom <org> | <owner>/<repo> [<owner>/<repo>...]",
 		Short:        "Export and aggregate SBOMs from GitHub's dependency graph",
 		Long:         longHelp,
 		Example:      example,
 		Version:      version,
 		SilenceUsage: true,
 		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 1 {
-				return fmt.Errorf("unexpected argument: %s", args[1])
+			if len(args) == 0 {
+				if !opts.skipFetch {
+					return errors.New("a target <org> or <owner>/<repo> is required unless --skip-fetch is set")
+				}
+				return nil
 			}
-			if len(args) == 0 && !opts.skipFetch {
-				return errors.New("a target <org> or <owner>/<repo> is required unless --skip-fetch is set")
+			if len(args) == 1 && !strings.Contains(args[0], "/") {
+				return nil // bare org/user name: scan every repo
+			}
+			for _, a := range args {
+				idx := strings.Index(a, "/")
+				if idx <= 0 || idx == len(a)-1 {
+					return fmt.Errorf("invalid target %q: expected <owner>/<repo>, or a single org/user name with no other arguments", a)
+				}
 			}
 			return nil
 		},
@@ -71,8 +82,8 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 			if opts.top < 0 {
 				return fmt.Errorf("--top must be non-negative, got %d", opts.top)
 			}
-			if len(args) == 1 {
-				opts.target = args[0]
+			if len(args) > 0 {
+				opts.targets = args
 			}
 
 			if !opts.skipFetch {
@@ -102,9 +113,9 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 	f.StringVarP(&opts.outDir, "output", "o", "sboms", "directory for raw SBOM JSON files")
 	f.StringVarP(&opts.format, "format", "f", "tsv", "output format for the combined table: tsv, csv, json, html, or parquet")
 	f.StringVar(&opts.outFile, "out", "", `combined table output path (default "combined.<format>")`)
-	f.IntVarP(&opts.limit, "limit", "l", 1000, "max repos to list from the org")
+	f.IntVarP(&opts.limit, "limit", "l", 1000, "max repos to list from the org (ignored for an explicit repo list)")
 	f.IntVarP(&opts.top, "top", "n", 20, `rows in the "most common packages" rollup`)
-	f.BoolVar(&opts.includeArchived, "include-archived", false, "include archived repos (skipped by default)")
+	f.BoolVar(&opts.includeArchived, "include-archived", false, "include archived repos when scanning an org (ignored for an explicit repo list)")
 	f.BoolVar(&opts.skipFetch, "skip-fetch", false, "re-aggregate existing JSON in the output dir; no API calls")
 	return cmd
 }

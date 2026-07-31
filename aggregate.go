@@ -33,7 +33,7 @@ func ecosystemOf(purl string) string {
 // --format json output when --out points inside the output directory —
 // are skipped with a warning rather than aborting the run.
 func aggregate(opts *options, stderr io.Writer) ([]row, error) {
-	files, err := filepath.Glob(filepath.Join(opts.outDir, "*.json"))
+	files, err := filepath.Glob(filepath.Join(opts.outDir, "*", "*.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func aggregate(opts *options, stderr io.Writer) ([]row, error) {
 			continue
 		}
 
-		repo := strings.TrimSuffix(filepath.Base(f), ".json")
+		repo := filepath.Base(filepath.Dir(f)) + "/" + strings.TrimSuffix(filepath.Base(f), ".json")
 		roots := map[string]bool{}
 		for _, rel := range doc.SBOM.Relationships {
 			if rel.RelationshipType == "DESCRIBES" {
