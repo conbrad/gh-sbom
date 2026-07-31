@@ -126,7 +126,7 @@ func TestCmdFormatCaseInsensitive(t *testing.T) {
 
 func TestCmdReaggregateIgnoresOwnOutput(t *testing.T) {
 	t.Chdir(t.TempDir())
-	out := filepath.Join("sboms", "combined.json")
+	out := filepath.Join("sboms", "acme", "combined.json")
 	// First run writes its JSON table inside the SBOM output dir...
 	if code, _, stderr := execRun(t, "acme", "-o", "sboms", "-f", "json", "--out", out); code != 0 {
 		t.Fatalf("first run code = %d, stderr:\n%s", code, stderr)

@@ -26,7 +26,7 @@ const example = `  gh sbom my-org
   gh sbom --skip-fetch  # re-aggregate previously downloaded SBOMs`
 
 type options struct {
-	target          string
+	targets         []string
 	outDir          string
 	outFile         string
 	format          string
@@ -71,8 +71,8 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 			if opts.top < 0 {
 				return fmt.Errorf("--top must be non-negative, got %d", opts.top)
 			}
-			if len(args) == 1 {
-				opts.target = args[0]
+			if len(args) > 0 {
+				opts.targets = args
 			}
 
 			if !opts.skipFetch {

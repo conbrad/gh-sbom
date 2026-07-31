@@ -34,6 +34,11 @@ type sbomDoc struct {
 	} `json:"sbom"`
 }
 
+// target identifies one repo to fetch an SBOM for.
+type target struct {
+	owner, repo string
+}
+
 // listRepos returns repo names for an org or user account, trying the org
 // endpoint first. Archived repos are skipped unless included.
 func listRepos(client *api.RESTClient, owner string, opts *options) ([]string, error) {
@@ -75,23 +80,45 @@ func listReposFrom(client *api.RESTClient, base string, opts *options) ([]string
 	return names, nil
 }
 
-func fetchSBOMs(client *api.RESTClient, opts *options, stderr io.Writer) error {
-	var owner string
-	var repos []string
-
-	if idx := strings.Index(opts.target, "/"); idx >= 0 {
-		owner = opts.target[:idx]
-		repos = []string{opts.target[idx+1:]}
-	} else {
-		owner = opts.target
+// resolveTargets expands opts.targets into concrete repos to fetch: a
+// single bare org/user name is expanded via listRepos into every repo it
+// owns; one or more explicit owner/repo entries are used directly,
+// deduplicated in first-occurrence order.
+func resolveTargets(client *api.RESTClient, opts *options, stderr io.Writer) ([]target, error) {
+	if len(opts.targets) == 1 && !strings.Contains(opts.targets[0], "/") {
+		owner := opts.targets[0]
 		fmt.Fprintf(stderr, "Listing repos for %s...\n", owner)
-		var err error
-		if repos, err = listRepos(client, owner, opts); err != nil {
-			return err
+		names, err := listRepos(client, owner, opts)
+		if err != nil {
+			return nil, err
 		}
-		if len(repos) == 0 {
-			return fmt.Errorf("no repos found for %q", owner)
+		if len(names) == 0 {
+			return nil, fmt.Errorf("no repos found for %q", owner)
 		}
+		targets := make([]target, len(names))
+		for i, name := range names {
+			targets[i] = target{owner, name}
+		}
+		return targets, nil
+	}
+
+	seen := map[target]bool{}
+	var targets []target
+	for _, arg := range opts.targets {
+		idx := strings.Index(arg, "/")
+		t := target{arg[:idx], arg[idx+1:]}
+		if !seen[t] {
+			seen[t] = true
+			targets = append(targets, t)
+		}
+	}
+	return targets, nil
+}
+
+func fetchSBOMs(client *api.RESTClient, opts *options, stderr io.Writer) error {
+	targets, err := resolveTargets(client, opts, stderr)
+	if err != nil {
+		return err
 	}
 
 	var rate struct {
@@ -101,9 +128,9 @@ func fetchSBOMs(client *api.RESTClient, opts *options, stderr io.Writer) error {
 			} `json:"core"`
 		} `json:"resources"`
 	}
-	if err := client.Get("rate_limit", &rate); err == nil && rate.Resources.Core.Remaining < len(repos) {
+	if err := client.Get("rate_limit", &rate); err == nil && rate.Resources.Core.Remaining < len(targets) {
 		fmt.Fprintf(stderr, "warning: only %d API requests remaining this hour for %d repos\n",
-			rate.Resources.Core.Remaining, len(repos))
+			rate.Resources.Core.Remaining, len(targets))
 	}
 
 	if err := os.MkdirAll(opts.outDir, 0o755); err != nil {
@@ -112,16 +139,20 @@ func fetchSBOMs(client *api.RESTClient, opts *options, stderr io.Writer) error {
 
 	var ok, empty int
 	var failed []string
-	for i, repo := range repos {
-		fmt.Fprintf(stderr, "[%d/%d] %s/%s\n", i+1, len(repos), owner, repo)
+	for i, t := range targets {
+		fmt.Fprintf(stderr, "[%d/%d] %s/%s\n", i+1, len(targets), t.owner, t.repo)
 
 		var doc json.RawMessage
-		if err := client.Get("repos/"+owner+"/"+repo+"/dependency-graph/sbom", &doc); err != nil {
-			failed = append(failed, repo)
+		if err := client.Get("repos/"+t.owner+"/"+t.repo+"/dependency-graph/sbom", &doc); err != nil {
+			failed = append(failed, t.owner+"/"+t.repo)
 			fmt.Fprintln(stderr, "  failed (dependency graph disabled, or no access)")
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(opts.outDir, repo+".json"), doc, 0o644); err != nil {
+		ownerDir := filepath.Join(opts.outDir, t.owner)
+		if err := os.MkdirAll(ownerDir, 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(ownerDir, t.repo+".json"), doc, 0o644); err != nil {
 			return err
 		}
 		ok++
@@ -135,7 +166,7 @@ func fetchSBOMs(client *api.RESTClient, opts *options, stderr io.Writer) error {
 	}
 
 	fmt.Fprintf(stderr, "\nFetched %d/%d SBOMs into %s/ (%d with no dependencies)\n",
-		ok, len(repos), opts.outDir, empty)
+		ok, len(targets), opts.outDir, empty)
 	if len(failed) > 0 {
 		fmt.Fprintf(stderr, "Failed (%d): %s\n", len(failed), strings.Join(failed, ", "))
 		fmt.Fprintln(stderr, "For private repos, an admin may need to enable the dependency graph under")

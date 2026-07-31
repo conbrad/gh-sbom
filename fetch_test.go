@@ -95,7 +95,7 @@ func TestListReposPaginationAndLimit(t *testing.T) {
 
 func TestFetchSBOMsOrg(t *testing.T) {
 	outDir := filepath.Join(t.TempDir(), "sboms")
-	opts := &options{target: "acme", outDir: outDir, limit: 1000}
+	opts := &options{targets: []string{"acme"}, outDir: outDir, limit: 1000}
 	var stderr bytes.Buffer
 
 	if err := fetchSBOMs(handlerClient(t, orgMux(t)), opts, &stderr); err != nil {
@@ -109,14 +109,14 @@ func TestFetchSBOMsOrg(t *testing.T) {
 		"note: no dependencies detected",
 		"failed (dependency graph disabled, or no access)",
 		"Fetched 2/3 SBOMs",
-		"Failed (1): bad",
+		"Failed (1): acme/bad",
 		"Settings -> Advanced Security -> Dependency graph",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stderr missing %q in:\n%s", want, out)
 		}
 	}
-	for _, f := range []string{"app.json", "empty.json"} {
+	for _, f := range []string{filepath.Join("acme", "app.json"), filepath.Join("acme", "empty.json")} {
 		if _, err := os.Stat(filepath.Join(outDir, f)); err != nil {
 			t.Errorf("expected %s: %v", f, err)
 		}
@@ -125,7 +125,7 @@ func TestFetchSBOMsOrg(t *testing.T) {
 
 func TestFetchSBOMsSingleRepo(t *testing.T) {
 	outDir := t.TempDir()
-	opts := &options{target: "acme/app", outDir: outDir, limit: 1000}
+	opts := &options{targets: []string{"acme/app"}, outDir: outDir, limit: 1000}
 	var stderr bytes.Buffer
 
 	if err := fetchSBOMs(handlerClient(t, orgMux(t)), opts, &stderr); err != nil {
@@ -140,7 +140,7 @@ func TestFetchSBOMsErrors(t *testing.T) {
 	var stderr bytes.Buffer
 
 	// Repo listing fails.
-	if err := fetchSBOMs(errClient(t), &options{target: "acme", limit: 10}, &stderr); err == nil ||
+	if err := fetchSBOMs(errClient(t), &options{targets: []string{"acme"}, limit: 10}, &stderr); err == nil ||
 		!strings.Contains(err.Error(), "could not list repos") {
 		t.Fatalf("err = %v", err)
 	}
@@ -150,7 +150,7 @@ func TestFetchSBOMsErrors(t *testing.T) {
 	mux.HandleFunc("/orgs/hollow/repos", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `[]`)
 	})
-	if err := fetchSBOMs(handlerClient(t, mux), &options{target: "hollow", limit: 10}, &stderr); err == nil ||
+	if err := fetchSBOMs(handlerClient(t, mux), &options{targets: []string{"hollow"}, limit: 10}, &stderr); err == nil ||
 		!strings.Contains(err.Error(), `no repos found for "hollow"`) {
 		t.Fatalf("err = %v", err)
 	}
@@ -160,17 +160,73 @@ func TestFetchSBOMsErrors(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := fetchSBOMs(handlerClient(t, orgMux(t)), &options{target: "acme/app", outDir: file, limit: 10}, &stderr); err == nil {
+	if err := fetchSBOMs(handlerClient(t, orgMux(t)), &options{targets: []string{"acme/app"}, outDir: file, limit: 10}, &stderr); err == nil {
 		t.Fatal("expected MkdirAll error")
 	}
 
-	// Output dir is not writable.
+	// Output dir is not writable, so the owner subdirectory can't be created.
 	roDir := filepath.Join(t.TempDir(), "ro")
 	if err := os.Mkdir(roDir, 0o555); err != nil {
 		t.Fatal(err)
 	}
 	defer os.Chmod(roDir, 0o755)
-	if err := fetchSBOMs(handlerClient(t, orgMux(t)), &options{target: "acme/app", outDir: roDir, limit: 10}, &stderr); err == nil {
+	if err := fetchSBOMs(handlerClient(t, orgMux(t)), &options{targets: []string{"acme/app"}, outDir: roDir, limit: 10}, &stderr); err == nil {
+		t.Fatal("expected owner-dir MkdirAll error")
+	}
+
+	// Owner subdirectory already exists but is not writable: MkdirAll is a
+	// no-op (it's already a dir), so this exercises the WriteFile error path.
+	outDir := t.TempDir()
+	roOwnerDir := filepath.Join(outDir, "acme")
+	if err := os.Mkdir(roOwnerDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(roOwnerDir, 0o755)
+	if err := fetchSBOMs(handlerClient(t, orgMux(t)), &options{targets: []string{"acme/app"}, outDir: outDir, limit: 10}, &stderr); err == nil {
 		t.Fatal("expected WriteFile error")
+	}
+}
+
+func TestResolveTargetsExplicitList(t *testing.T) {
+	// limit/includeArchived only govern org listing; set to values that
+	// would visibly change an org-scan result, to prove they have no
+	// effect when every target is already an explicit owner/repo.
+	opts := &options{targets: []string{"cli/cli", "octo/hello", "cli/cli"}, limit: 1, includeArchived: false}
+	var stderr bytes.Buffer
+	targets, err := resolveTargets(nil, opts, &stderr)
+	if err != nil {
+		t.Fatalf("resolveTargets: %v", err)
+	}
+	want := []target{{"cli", "cli"}, {"octo", "hello"}}
+	if fmt.Sprint(targets) != fmt.Sprint(want) {
+		t.Fatalf("targets = %v, want %v (dedup + order, limit=1 ignored)", targets, want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected listing output for explicit list: %q", stderr.String())
+	}
+}
+
+func TestFetchSBOMsExplicitList(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/acme/app/dependency-graph/sbom", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, goodSBOM)
+	})
+	mux.HandleFunc("/repos/other/thing/dependency-graph/sbom", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, emptySBOM)
+	})
+	outDir := t.TempDir()
+	opts := &options{targets: []string{"acme/app", "other/thing"}, outDir: outDir, limit: 1000}
+	var stderr bytes.Buffer
+
+	if err := fetchSBOMs(handlerClient(t, mux), opts, &stderr); err != nil {
+		t.Fatalf("fetchSBOMs: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "Fetched 2/2 SBOMs") {
+		t.Fatalf("stderr = %s", stderr.String())
+	}
+	for _, f := range []string{filepath.Join("acme", "app.json"), filepath.Join("other", "thing.json")} {
+		if _, err := os.Stat(filepath.Join(outDir, f)); err != nil {
+			t.Errorf("expected %s: %v", f, err)
+		}
 	}
 }

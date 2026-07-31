@@ -63,7 +63,7 @@ func TestRunFailures(t *testing.T) {
 	if code := run([]string{"--skip-fetch", "-o", t.TempDir()}, &stdout, &stderr, okFactory); code != 1 {
 		t.Fatal("aggregate failure should exit 1")
 	}
-	sbomDir := writeSBOMDir(t, map[string]string{"app.json": goodSBOM})
+	sbomDir := writeSBOMDir(t, map[string]string{"acme/app.json": goodSBOM})
 	badOut := filepath.Join(t.TempDir(), "no", "such", "x.tsv")
 	if code := run([]string{"--skip-fetch", "-o", sbomDir, "--out", badOut}, &stdout, &stderr, okFactory); code != 1 {
 		t.Fatal("write failure should exit 1")
