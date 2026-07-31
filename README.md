@@ -28,6 +28,9 @@ gh sbom my-org
 # a single repo
 gh sbom cli/cli
 
+# an explicit list of repos, spanning any number of owners
+gh sbom cli/cli conbrad/gh-sbom octo/hello
+
 # tune outputs
 gh sbom my-org --output sboms --format csv --out deps.csv --top 50
 
@@ -42,18 +45,18 @@ gh sbom --skip-fetch
 | `-o, --output <dir>` | `sboms` | Directory for raw SPDX JSON, one file per repo |
 | `-f, --format <fmt>` | `tsv` | Combined table format: `tsv`, `csv`, `json`, `html`, or `parquet` |
 | `--out <file>` | `combined.<format>` | Combined table output path |
-| `-l, --limit <n>` | `1000` | Max repos to list from the org |
+| `-l, --limit <n>` | `1000` | Max repos to list from the org (ignored for an explicit repo list) |
 | `-n, --top <n>` | `20` | Rows in the "most common packages" rollup |
-| `--include-archived` | off | Include archived repos |
+| `--include-archived` | off | Include archived repos when scanning an org (ignored for an explicit repo list) |
 | `--skip-fetch` | off | Re-aggregate existing JSON only |
 
 ## Output
 
-- `sboms/<repo>.json`: the raw SPDX 2.3 SBOM for each repo
-- `combined.<format>`: the combined dependency table (`--format tsv|csv|json|html|parquet`), one entry per dependency. TSV/CSV columns, JSON object keys, and Parquet columns: `repo`, `ecosystem`, `package`, `version`:
+- `sboms/<owner>/<repo>.json`: the raw SPDX 2.3 SBOM for each repo, nested by owner so same-named repos under different owners never collide
+- `combined.<format>`: the combined dependency table (`--format tsv|csv|json|html|parquet`), one entry per dependency. TSV/CSV columns, JSON object keys, and Parquet columns: `repo`, `ecosystem`, `package`, `version`. `repo` is always `owner/repo`, even for a single-org run:
 
   ```json
-  [{"repo": "cli", "ecosystem": "golang", "package": "github.com/microcosm-cc/bluemonday", "version": "v1.0.27"}]
+  [{"repo": "cli/cli", "ecosystem": "golang", "package": "github.com/microcosm-cc/bluemonday", "version": "v1.0.27"}]
   ```
 
   `--format html` produces a single self-contained, styled document (no JS, no external assets) — open it in a browser or attach it to a PR/issue for a quick shareable view. It's for reading, not parsing; use tsv/csv/json for that.
@@ -95,7 +98,7 @@ gh api rate_limit --jq '.resources.core'
 - **Dependency graph must be enabled** for a repo. It's on by default for public repos; for private repos an org admin may need to enable it under **Settings → Advanced Security → Dependency graph**. Disabled repos are reported and skipped.
 - Results reflect **declared dependencies** that GitHub's parsers understand (npm, pip, Maven, Cargo, Go modules, RubyGems, NuGet, Composer, GitHub Actions, etc.) — including transitive dependencies from lockfiles. It is not a from-scratch scan like syft, so it won't catch OS-level packages baked into a Dockerfile.
 - TSV/CSV output is RFC 4180: a field containing the delimiter, a double quote, a newline, or leading whitespace is quoted. Real package names are virtually never like that, but the naive `cut`/`grep` recipes above would mis-read such a row — use `--format json` + `jq` when you need bulletproof parsing.
-- During aggregation, `*.json` files in the output directory that aren't SBOMs (for example the tool's own `--format json` table, if you pointed `--out` there) are skipped with a warning.
+- During aggregation, `*.json` files inside an owner subdirectory that aren't SBOMs (for example the tool's own `--format json` table, if you pointed `--out` at a path nested under `--output`) are skipped with a warning. A stray `*.json` file directly in the output directory (not inside an owner subdirectory) isn't scanned at all.
 
 ## Releasing
 
