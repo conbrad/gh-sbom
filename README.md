@@ -1,5 +1,7 @@
 # gh-sbom
 
+[![codecov](https://codecov.io/gh/conbrad/gh-sbom/graph/badge.svg)](https://codecov.io/gh/conbrad/gh-sbom)
+
 A [GitHub CLI](https://cli.github.com) extension that exports the SBOM (software bill of materials) for every repo in an org and aggregates the results into one combined package list.
 
 It uses GitHub's native dependency-graph SBOM endpoint ([`GET /repos/{owner}/{repo}/dependency-graph/sbom`](https://docs.github.com/en/rest/dependency-graph/sboms)), which returns the same server-side-computed data shown in a repo's
