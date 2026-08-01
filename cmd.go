@@ -52,9 +52,6 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 		Long:         rootLongHelp,
 		Version:      version,
 		SilenceUsage: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return errors.New("a subcommand is required")
-		},
 	}
 	cmd.SetVersionTemplate("gh-sbom {{.Version}}\n")
 	cmd.AddCommand(newScanCmd(newClient))

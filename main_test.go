@@ -44,9 +44,13 @@ func TestRunFailures(t *testing.T) {
 	if code := run([]string{"--help"}, &stdout, &stderr, nil); code != 0 {
 		t.Fatalf("help code = %d", code)
 	}
-	if code := run(nil, &stdout, &stderr, nil); code != 1 {
-		t.Fatalf("usage code = %d", code)
+	if code := run(nil, &stdout, &stderr, nil); code != 0 {
+		t.Fatalf("bare invocation code = %d", code)
 	}
+	if !strings.Contains(stdout.String(), "Available Commands:") {
+		t.Fatalf("bare invocation should print help, got: %s", stdout.String())
+	}
+	stdout.Reset()
 	if code := run([]string{"--bogus"}, &stdout, &stderr, nil); code != 1 {
 		t.Fatalf("bad flag code = %d", code)
 	}
