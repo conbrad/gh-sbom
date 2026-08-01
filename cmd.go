@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 const rootLongHelp = `Export and aggregate SBOMs from GitHub's dependency graph.
 
@@ -62,7 +62,7 @@ func newScanCmd(newClient clientFactory) *cobra.Command {
 	opts := &options{}
 	cmd := &cobra.Command{
 		Use:          "scan <org> | <owner>/<repo> [<owner>/<repo>...]",
-		Short:        "Export and aggregate SBOMs from GitHub's dependency graph",
+		Short:        "Fetch and aggregate SBOMs for an org or repo list",
 		Long:         scanLongHelp,
 		Example:      scanExample,
 		SilenceUsage: true,

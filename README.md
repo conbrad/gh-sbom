@@ -23,6 +23,10 @@ go build && gh extension install .
 
 ## Usage
 
+> **Upgrading from v0.2.0?** The bare `gh sbom <target>` syntax no longer works — it now
+> requires the explicit `scan` verb (`gh sbom scan <target>`), to avoid colliding with other
+> subcommand names.
+
 ```sh
 # every repo in an org (or user account)
 gh sbom scan my-org
