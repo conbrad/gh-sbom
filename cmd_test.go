@@ -25,7 +25,7 @@ func TestCmdHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("help code = %d", code)
 	}
-	for _, want := range []string{"Usage:", "sbom <org> | <owner>/<repo>", "--skip-fetch", "--include-archived", "Examples:", "html"} {
+	for _, want := range []string{"Usage:", "Available Commands:", "scan"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("help missing %q:\n%s", want, stdout)
 		}
@@ -39,7 +39,32 @@ func TestCmdVersion(t *testing.T) {
 	}
 }
 
-func TestCmdArgValidation(t *testing.T) {
+func TestCmdUnknownCommandForOldBareSyntax(t *testing.T) {
+	// The pre-scan-verb invocation shape (gh sbom <target> with no verb)
+	// must now fail as an unrecognized subcommand, not silently succeed
+	// or panic -- this is the whole point of the restructuring.
+	code, _, stderr := execRun(t, "acme")
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr, `unknown command "acme" for "sbom"`) {
+		t.Fatalf("stderr = %s, want an unknown-command error", stderr)
+	}
+}
+
+func TestScanCmdHelp(t *testing.T) {
+	code, stdout, _ := execRun(t, "scan", "--help")
+	if code != 0 {
+		t.Fatalf("help code = %d", code)
+	}
+	for _, want := range []string{"Usage:", "scan <org> | <owner>/<repo>", "--skip-fetch", "--include-archived", "Examples:", "html"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("help missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestScanCmdArgValidation(t *testing.T) {
 	cases := []struct {
 		name    string
 		args    []string
@@ -59,7 +84,8 @@ func TestCmdArgValidation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			code, _, stderr := execRun(t, tc.args...)
+			args := append([]string{"scan"}, tc.args...)
+			code, _, stderr := execRun(t, args...)
 			if code != 1 {
 				t.Fatalf("code = %d, want 1", code)
 			}
@@ -70,9 +96,9 @@ func TestCmdArgValidation(t *testing.T) {
 	}
 }
 
-func TestCmdDefaults(t *testing.T) {
+func TestScanCmdDefaults(t *testing.T) {
 	t.Chdir(t.TempDir())
-	code, stdout, _ := execRun(t, "acme")
+	code, stdout, _ := execRun(t, "scan", "acme")
 	if code != 0 {
 		t.Fatalf("code = %d", code)
 	}
@@ -85,9 +111,9 @@ func TestCmdDefaults(t *testing.T) {
 	}
 }
 
-func TestCmdFormatDefaults(t *testing.T) {
+func TestScanCmdFormatDefaults(t *testing.T) {
 	t.Chdir(t.TempDir())
-	code, stdout, _ := execRun(t, "acme", "-f", "json")
+	code, stdout, _ := execRun(t, "scan", "acme", "-f", "json")
 	if code != 0 {
 		t.Fatalf("code = %d", code)
 	}
@@ -100,9 +126,9 @@ func TestCmdFormatDefaults(t *testing.T) {
 	}
 }
 
-func TestCmdHTMLFormat(t *testing.T) {
+func TestScanCmdHTMLFormat(t *testing.T) {
 	t.Chdir(t.TempDir())
-	code, stdout, _ := execRun(t, "acme", "-f", "html")
+	code, stdout, _ := execRun(t, "scan", "acme", "-f", "html")
 	if code != 0 {
 		t.Fatalf("code = %d", code)
 	}
@@ -118,9 +144,9 @@ func TestCmdHTMLFormat(t *testing.T) {
 	}
 }
 
-func TestCmdFormatCaseInsensitive(t *testing.T) {
+func TestScanCmdFormatCaseInsensitive(t *testing.T) {
 	t.Chdir(t.TempDir())
-	code, stdout, _ := execRun(t, "acme", "--format", "JSON")
+	code, stdout, _ := execRun(t, "scan", "acme", "--format", "JSON")
 	if code != 0 {
 		t.Fatalf("code = %d", code)
 	}
@@ -129,15 +155,15 @@ func TestCmdFormatCaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestCmdReaggregateIgnoresOwnOutput(t *testing.T) {
+func TestScanCmdReaggregateIgnoresOwnOutput(t *testing.T) {
 	t.Chdir(t.TempDir())
 	out := filepath.Join("sboms", "acme", "combined.json")
 	// First run writes its JSON table inside the SBOM output dir...
-	if code, _, stderr := execRun(t, "acme", "-o", "sboms", "-f", "json", "--out", out); code != 0 {
+	if code, _, stderr := execRun(t, "scan", "acme", "-o", "sboms", "-f", "json", "--out", out); code != 0 {
 		t.Fatalf("first run code = %d, stderr:\n%s", code, stderr)
 	}
 	// ...and re-aggregation must skip that file rather than abort.
-	code, stdout, stderr := execRun(t, "--skip-fetch", "-o", "sboms", "-f", "json", "--out", out)
+	code, stdout, stderr := execRun(t, "scan", "--skip-fetch", "-o", "sboms", "-f", "json", "--out", out)
 	if code != 0 {
 		t.Fatalf("second run code = %d, stderr:\n%s", code, stderr)
 	}
@@ -149,10 +175,10 @@ func TestCmdReaggregateIgnoresOwnOutput(t *testing.T) {
 	}
 }
 
-func TestCmdExplicitOut(t *testing.T) {
+func TestScanCmdExplicitOut(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "deps.csv")
-	code, stdout, _ := execRun(t, "acme", "-o", filepath.Join(dir, "sboms"), "--format", "csv", "--out", out)
+	code, stdout, _ := execRun(t, "scan", "acme", "-o", filepath.Join(dir, "sboms"), "--format", "csv", "--out", out)
 	if code != 0 {
 		t.Fatalf("code = %d", code)
 	}
@@ -168,7 +194,7 @@ func TestCmdExplicitOut(t *testing.T) {
 	}
 }
 
-func TestCmdExplicitRepoList(t *testing.T) {
+func TestScanCmdExplicitRepoList(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/repos/acme/app/dependency-graph/sbom", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, goodSBOM)
@@ -180,7 +206,7 @@ func TestCmdExplicitRepoList(t *testing.T) {
 
 	t.Chdir(t.TempDir())
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"acme/app", "other/thing"}, &stdout, &stderr, factory)
+	code := run([]string{"scan", "acme/app", "other/thing"}, &stdout, &stderr, factory)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr:\n%s", code, stderr.String())
 	}
@@ -191,5 +217,33 @@ func TestCmdExplicitRepoList(t *testing.T) {
 		if _, err := os.Stat(f); err != nil {
 			t.Errorf("expected %s: %v", f, err)
 		}
+	}
+}
+
+func TestScanCmdOrgNameMatchesSubcommandName(t *testing.T) {
+	// The structural fix this task exists for: an org literally named the
+	// same as a registered subcommand ("scan") must still be reachable,
+	// once correctly prefixed with the verb -- "gh sbom scan scan" scans
+	// org "scan", it does not error as an unrecognized nested subcommand.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/orgs/scan/repos", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[{"name":"app"}]`)
+	})
+	mux.HandleFunc("/repos/scan/app/dependency-graph/sbom", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, goodSBOM)
+	})
+	factory := func() (*api.RESTClient, error) { return handlerClient(t, mux), nil }
+
+	t.Chdir(t.TempDir())
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"scan", "scan"}, &stdout, &stderr, factory)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr:\n%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Wrote combined.tsv:") {
+		t.Fatalf("stdout = %s", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join("sboms", "scan", "app.json")); err != nil {
+		t.Fatalf("expected sboms/scan/app.json: %v", err)
 	}
 }
