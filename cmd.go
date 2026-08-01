@@ -55,6 +55,7 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 	}
 	cmd.SetVersionTemplate("gh-sbom {{.Version}}\n")
 	cmd.AddCommand(newScanCmd(newClient))
+	cmd.AddCommand(newBrowseCmd())
 	return cmd
 }
 

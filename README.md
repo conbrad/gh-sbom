@@ -42,6 +42,9 @@ gh sbom scan my-org --output sboms --format csv --out deps.csv --top 50
 
 # re-run the aggregation/rollup over already-downloaded SBOMs (no API calls)
 gh sbom scan --skip-fetch
+
+# interactively browse a prior run's results (no network calls)
+gh sbom browse
 ```
 
 ### Flags
@@ -90,6 +93,19 @@ grep -P '\tlodash\t' combined.tsv
 # with --format json: repos depending on a given package
 jq -r '.[] | select(.package == "lodash") | .repo' combined.json
 ```
+
+## Interactive browsing
+
+`gh sbom browse` opens a terminal UI over a prior run's SBOM output —
+the same data `--skip-fetch` re-aggregates, read directly from the
+output directory (`-o, --output`, default `sboms`). No network calls.
+
+- `/` starts a live filter (matches repo, ecosystem, package, or version);
+  `esc` or `enter` stops editing it and returns to normal keys
+- `j`/`k` or the arrow keys move the selection; `s` cycles the sort column
+  and direction
+- `enter` on a row shows every repo on that exact package version
+- `q` quits
 
 ## Rate limits
 
