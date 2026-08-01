@@ -18,7 +18,7 @@ func TestRunEndToEnd(t *testing.T) {
 	factory := func() (*api.RESTClient, error) { return handlerClient(t, orgMux(t)), nil }
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"acme", "-o", outDir, "--out", out, "--top", "2"}, &stdout, &stderr, factory)
+	code := run([]string{"scan", "acme", "-o", outDir, "--out", out, "--top", "2"}, &stdout, &stderr, factory)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr:\n%s", code, stderr.String())
 	}
@@ -31,7 +31,7 @@ func TestRunEndToEnd(t *testing.T) {
 
 	// Re-aggregate offline from the files the first run produced.
 	stdout.Reset()
-	code = run([]string{"--skip-fetch", "-o", outDir, "--out", out}, &stdout, &stderr, nil)
+	code = run([]string{"scan", "--skip-fetch", "-o", outDir, "--out", out}, &stdout, &stderr, nil)
 	if code != 0 || !strings.Contains(stdout.String(), "unique packages") {
 		t.Fatalf("skip-fetch: code = %d, stdout = %s", code, stdout.String())
 	}
@@ -44,28 +44,33 @@ func TestRunFailures(t *testing.T) {
 	if code := run([]string{"--help"}, &stdout, &stderr, nil); code != 0 {
 		t.Fatalf("help code = %d", code)
 	}
-	if code := run(nil, &stdout, &stderr, nil); code != 1 {
-		t.Fatalf("usage code = %d", code)
+	stdout.Reset()
+	if code := run(nil, &stdout, &stderr, nil); code != 0 {
+		t.Fatalf("bare invocation code = %d", code)
 	}
+	if !strings.Contains(stdout.String(), "Available Commands:") {
+		t.Fatalf("bare invocation should print help, got: %s", stdout.String())
+	}
+	stdout.Reset()
 	if code := run([]string{"--bogus"}, &stdout, &stderr, nil); code != 1 {
 		t.Fatalf("bad flag code = %d", code)
 	}
-	if code := run([]string{"acme"}, &stdout, &stderr, func() (*api.RESTClient, error) {
+	if code := run([]string{"scan", "acme"}, &stdout, &stderr, func() (*api.RESTClient, error) {
 		return nil, errors.New("no auth")
 	}); code != 1 || !strings.Contains(stderr.String(), "gh auth login") {
 		t.Fatalf("client error not reported: %s", stderr.String())
 	}
-	if code := run([]string{"ghost", "-o", t.TempDir()}, &stdout, &stderr, func() (*api.RESTClient, error) {
+	if code := run([]string{"scan", "ghost", "-o", t.TempDir()}, &stdout, &stderr, func() (*api.RESTClient, error) {
 		return errClient(t), nil
 	}); code != 1 {
 		t.Fatal("fetch failure should exit 1")
 	}
-	if code := run([]string{"--skip-fetch", "-o", t.TempDir()}, &stdout, &stderr, okFactory); code != 1 {
+	if code := run([]string{"scan", "--skip-fetch", "-o", t.TempDir()}, &stdout, &stderr, okFactory); code != 1 {
 		t.Fatal("aggregate failure should exit 1")
 	}
 	sbomDir := writeSBOMDir(t, map[string]string{"acme/app.json": goodSBOM})
 	badOut := filepath.Join(t.TempDir(), "no", "such", "x.tsv")
-	if code := run([]string{"--skip-fetch", "-o", sbomDir, "--out", badOut}, &stdout, &stderr, okFactory); code != 1 {
+	if code := run([]string{"scan", "--skip-fetch", "-o", sbomDir, "--out", badOut}, &stdout, &stderr, okFactory); code != 1 {
 		t.Fatal("write failure should exit 1")
 	}
 }

@@ -23,21 +23,25 @@ go build && gh extension install .
 
 ## Usage
 
+> **Upgrading from v0.2.0?** The bare `gh sbom <target>` syntax no longer works — it now
+> requires the explicit `scan` verb (`gh sbom scan <target>`), to avoid colliding with other
+> subcommand names.
+
 ```sh
 # every repo in an org (or user account)
-gh sbom my-org
+gh sbom scan my-org
 
 # a single repo
-gh sbom cli/cli
+gh sbom scan cli/cli
 
 # an explicit list of repos, spanning any number of owners
-gh sbom cli/cli conbrad/gh-sbom octo/hello
+gh sbom scan cli/cli conbrad/gh-sbom octo/hello
 
 # tune outputs
-gh sbom my-org --output sboms --format csv --out deps.csv --top 50
+gh sbom scan my-org --output sboms --format csv --out deps.csv --top 50
 
 # re-run the aggregation/rollup over already-downloaded SBOMs (no API calls)
-gh sbom --skip-fetch
+gh sbom scan --skip-fetch
 ```
 
 ### Flags

@@ -8,9 +8,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
-const longHelp = `Export and aggregate SBOMs from GitHub's dependency graph.
+const rootLongHelp = `Export and aggregate SBOMs from GitHub's dependency graph.
+
+Uses GitHub's native SBOM endpoint (GET /repos/{owner}/{repo}/dependency-graph/sbom),
+so there is no cloning and no local scanning -- one REST call per repo.
+
+Run "gh sbom scan --help" for details.`
+
+const scanLongHelp = `Export and aggregate SBOMs from GitHub's dependency graph.
 
 Uses GitHub's native SBOM endpoint (GET /repos/{owner}/{repo}/dependency-graph/sbom),
 so there is no cloning and no local scanning -- one REST call per repo.
@@ -21,11 +28,11 @@ those. Raw SPDX JSON is saved per repo in the output directory, and a
 combined table (columns: repo, ecosystem, package, version;
 --format tsv|csv|json|html|parquet) is written alongside a "most common packages" rollup.`
 
-const example = `  gh sbom my-org
-  gh sbom cli/cli
-  gh sbom cli/cli conbrad/gh-sbom octo/hello
-  gh sbom my-org --top 50
-  gh sbom --skip-fetch  # re-aggregate previously downloaded SBOMs`
+const scanExample = `  gh sbom scan my-org
+  gh sbom scan cli/cli
+  gh sbom scan cli/cli conbrad/gh-sbom octo/hello
+  gh sbom scan my-org --top 50
+  gh sbom scan --skip-fetch  # re-aggregate previously downloaded SBOMs`
 
 type options struct {
 	targets         []string
@@ -39,13 +46,25 @@ type options struct {
 }
 
 func newRootCmd(newClient clientFactory) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "sbom",
+		Short:        "Export and aggregate SBOMs from GitHub's dependency graph",
+		Long:         rootLongHelp,
+		Version:      version,
+		SilenceUsage: true,
+	}
+	cmd.SetVersionTemplate("gh-sbom {{.Version}}\n")
+	cmd.AddCommand(newScanCmd(newClient))
+	return cmd
+}
+
+func newScanCmd(newClient clientFactory) *cobra.Command {
 	opts := &options{}
 	cmd := &cobra.Command{
-		Use:          "sbom <org> | <owner>/<repo> [<owner>/<repo>...]",
-		Short:        "Export and aggregate SBOMs from GitHub's dependency graph",
-		Long:         longHelp,
-		Example:      example,
-		Version:      version,
+		Use:          "scan <org> | <owner>/<repo> [<owner>/<repo>...]",
+		Short:        "Fetch and aggregate SBOMs for an org or repo list",
+		Long:         scanLongHelp,
+		Example:      scanExample,
 		SilenceUsage: true,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -107,7 +126,6 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.SetVersionTemplate("gh-sbom {{.Version}}\n")
 
 	f := cmd.Flags()
 	f.StringVarP(&opts.outDir, "output", "o", "sboms", "directory for raw SBOM JSON files")
