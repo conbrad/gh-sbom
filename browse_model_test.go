@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,7 +17,13 @@ func testRows() []row {
 }
 
 func typeKey(m browseModel, s string) (tea.Model, tea.Cmd) {
-	return m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(browseModel)
+	for _, r := range s {
+		updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(browseModel)
+	}
+	return m, cmd
 }
 
 func TestNewBrowseModel(t *testing.T) {
@@ -132,7 +139,17 @@ func TestBrowseModelEscReturnsToListPreservingState(t *testing.T) {
 	m := newBrowseModel(testRows())
 	updated, _ := typeKey(m, "lodash")
 	m = updated.(browseModel)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.filtering {
+		t.Fatal("expected filtering mode to still be active after typing")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // exits filtering mode
+	m = updated.(browseModel)
+	if m.filtering {
+		t.Fatal("expected filtering mode to end after enter")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // now opens detail
 	m = updated.(browseModel)
 	if m.view != viewDetail {
 		t.Fatal("expected viewDetail before esc")
@@ -221,5 +238,98 @@ func TestBrowseModelEnterOutOfBoundsIsNoOp(t *testing.T) {
 	m = updated.(browseModel)
 	if m.view != viewList {
 		t.Fatalf("view = %v, want viewList (Enter on empty list is a no-op)", m.view)
+	}
+}
+
+func TestBrowseModelFilterDoesNotCollideWithCommands(t *testing.T) {
+	m := newBrowseModel(testRows())
+	updated, cmd := typeKey(m, "s")
+	m = updated.(browseModel)
+	if cmd != nil {
+		if _, isQuit := cmd().(tea.QuitMsg); isQuit {
+			t.Fatal("typing 's' while filtering must not quit")
+		}
+	}
+	if m.filter != "s" {
+		t.Fatalf("filter = %q, want %q (typing 's' while filtering must not trigger a sort cycle)", m.filter, "s")
+	}
+	if sortCycle[m.sortIdx] != (sortState{sortRepo, true}) {
+		t.Fatalf("sort state changed to %v after typing 's' while filtering, want unchanged repo asc", sortCycle[m.sortIdx])
+	}
+
+	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	m = updated.(browseModel)
+	if cmd != nil {
+		if _, isQuit := cmd().(tea.QuitMsg); isQuit {
+			t.Fatal("typing 'q' while filtering must not quit")
+		}
+	}
+	if m.filter != "sq" {
+		t.Fatalf("filter = %q, want %q", m.filter, "sq")
+	}
+}
+
+func TestBrowseModelSlashEntersFilteringMode(t *testing.T) {
+	m := newBrowseModel(testRows())
+	if m.filtering {
+		t.Fatal("new model should not start in filtering mode")
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(browseModel)
+	if !m.filtering {
+		t.Fatal("'/' should enter filtering mode")
+	}
+}
+
+func TestBrowseModelFilterBackspaceHandlesMultibyteRunes(t *testing.T) {
+	m := newBrowseModel(testRows())
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(browseModel)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'é'}})
+	m = updated.(browseModel)
+	if m.filter != "é" {
+		t.Fatalf("filter = %q, want %q", m.filter, "é")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m = updated.(browseModel)
+	if m.filter != "" {
+		t.Fatalf("filter = %q after backspace on a multi-byte rune, want empty (not corrupted mid-byte)", m.filter)
+	}
+}
+
+func TestBrowseModelFilteringModeView(t *testing.T) {
+	m := newBrowseModel(testRows())
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(browseModel)
+	if !m.filtering {
+		t.Fatal("expected filtering mode after '/'")
+	}
+	view := m.View()
+	if !strings.Contains(view, "done filtering") {
+		t.Fatalf("View() while filtering = %q, want it to mention the filtering footer hint", view)
+	}
+	if !strings.Contains(view, "█") {
+		t.Fatalf("View() while filtering = %q, want the cursor block rendered in the filter line", view)
+	}
+}
+
+func TestBrowseModelSortIsStable(t *testing.T) {
+	rows := []row{
+		{"acme/z", "npm", "pkg-b", "1.0"},
+		{"acme/z", "npm", "pkg-a", "1.0"},
+	}
+	m := newBrowseModel(rows)
+	// Cycle to ecosystem asc (both rows tie on "npm"): a stable sort must
+	// preserve the original relative order (pkg-b before pkg-a) instead of
+	// reordering ties arbitrarily.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m = updated.(browseModel)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m = updated.(browseModel)
+	if sortCycle[m.sortIdx] != (sortState{sortEcosystem, true}) {
+		t.Fatalf("sort = %v, want ecosystem asc", sortCycle[m.sortIdx])
+	}
+	if m.filtered[0].pkg != "pkg-b" || m.filtered[1].pkg != "pkg-a" {
+		t.Fatalf("filtered = %v, want original order preserved for tied ecosystem", m.filtered)
 	}
 }

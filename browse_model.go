@@ -53,13 +53,16 @@ type detailData struct {
 
 // browseModel implements tea.Model for `gh sbom browse`.
 type browseModel struct {
-	all      []row // full unfiltered set, loaded once
-	filtered []row // currently visible, after filter+sort; indices match tbl's rows
-	filter   string
-	sortIdx  int
-	view     browseView
-	tbl      table.Model
-	detail   detailData
+	all       []row // full unfiltered set, loaded once
+	filtered  []row // currently visible, after filter+sort; indices match tbl's rows
+	filter    string
+	filtering bool // true while editing the filter (entered via '/'); single-letter
+	// commands (s, q, /) are only live when this is false, so they never
+	// collide with filter text being typed.
+	sortIdx int
+	view    browseView
+	tbl     table.Model
+	detail  detailData
 }
 
 func newBrowseModel(rows []row) browseModel {
@@ -99,9 +102,30 @@ func (m browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.filtering {
+			switch msg.String() {
+			case "esc", "enter":
+				m.filtering = false
+			case "backspace":
+				if m.filter != "" {
+					r := []rune(m.filter)
+					m.filter = string(r[:len(r)-1])
+					m.applyFilterAndSort()
+				}
+			default:
+				if msg.Type == tea.KeyRunes {
+					m.filter += string(msg.Runes)
+					m.applyFilterAndSort()
+				}
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "/":
+			m.filtering = true
+			return m, nil
 		case "s":
 			m.sortIdx = (m.sortIdx + 1) % len(sortCycle)
 			m.applyFilterAndSort()
@@ -109,18 +133,6 @@ func (m browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			m.openDetail()
 			return m, nil
-		case "backspace":
-			if m.filter != "" {
-				m.filter = m.filter[:len(m.filter)-1]
-				m.applyFilterAndSort()
-			}
-			return m, nil
-		default:
-			if msg.Type == tea.KeyRunes {
-				m.filter += string(msg.Runes)
-				m.applyFilterAndSort()
-				return m, nil
-			}
 		}
 	}
 	var cmd tea.Cmd
@@ -137,7 +149,7 @@ func (m *browseModel) applyFilterAndSort() {
 		}
 	}
 	st := sortCycle[m.sortIdx]
-	sort.Slice(filtered, func(i, j int) bool {
+	sort.SliceStable(filtered, func(i, j int) bool {
 		a, b := sortField(filtered[i], st.col), sortField(filtered[j], st.col)
 		if st.asc {
 			return a < b
@@ -194,8 +206,17 @@ func (m browseModel) View() string {
 
 func (m browseModel) listView() string {
 	header := headerStyle.Render(fmt.Sprintf("gh-sbom browse — %d dependencies", len(m.filtered)))
-	filterLine := fmt.Sprintf("Filter: %s█", m.filter)
-	footer := footerStyle.Render(fmt.Sprintf("sort: %s (s: cycle)   enter: repos on this version   q: quit", sortLabel(sortCycle[m.sortIdx])))
+	cursor := ""
+	if m.filtering {
+		cursor = "█"
+	}
+	filterLine := fmt.Sprintf("Filter: %s%s", m.filter, cursor)
+	var footer string
+	if m.filtering {
+		footer = footerStyle.Render("esc/enter: done filtering")
+	} else {
+		footer = footerStyle.Render(fmt.Sprintf("sort: %s (s: cycle)   /: filter   enter: repos on this version   q: quit", sortLabel(sortCycle[m.sortIdx])))
+	}
 	return header + "\n\n" + filterLine + "\n\n" + m.tbl.View() + "\n\n" + footer
 }
 

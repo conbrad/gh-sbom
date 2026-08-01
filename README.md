@@ -96,10 +96,12 @@ jq -r '.[] | select(.package == "lodash") | .repo' combined.json
 the same data `--skip-fetch` re-aggregates, read directly from the
 output directory (`-o, --output`, default `sboms`). No network calls.
 
-- Type to live-filter rows (matches repo, ecosystem, package, or version)
-- `s` cycles the sort column and direction
+- `/` starts a live filter (matches repo, ecosystem, package, or version);
+  `esc` or `enter` stops editing it and returns to normal keys
+- `j`/`k` or the arrow keys move the selection; `s` cycles the sort column
+  and direction
 - `enter` on a row shows every repo on that exact package version
-- `esc` returns to the list; `q` quits
+- `q` quits
 
 ## Rate limits
 
