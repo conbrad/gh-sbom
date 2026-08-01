@@ -117,5 +117,6 @@ func newRootCmd(newClient clientFactory) *cobra.Command {
 	f.IntVarP(&opts.top, "top", "n", 20, `rows in the "most common packages" rollup`)
 	f.BoolVar(&opts.includeArchived, "include-archived", false, "include archived repos when scanning an org (ignored for an explicit repo list)")
 	f.BoolVar(&opts.skipFetch, "skip-fetch", false, "re-aggregate existing JSON in the output dir; no API calls")
+	cmd.AddCommand(newBrowseCmd())
 	return cmd
 }
